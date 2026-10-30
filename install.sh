@@ -21,6 +21,9 @@ else
         for f do d="$0/${f#./}"; mkdir -p "$(dirname "$d")"; cp -p "$f" "$d"; done' "$DEST" {} + )
 fi
 
+# rsync --exclude 不会删除已存在的被排除项，上一个 python 版本的 pyc 会一直留着
+rm -rf "$DEST/scripts/__pycache__"
+
 chmod 755 "$DEST/mv.sh"
 chmod 644 "$DEST/SKILL.md" "$DEST/NOTICE.md" "$DEST/README.md" 2>/dev/null || true
 

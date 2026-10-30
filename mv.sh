@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════
-#  mv.sh —— 一条命令一个动作。你只需要记这 13 个动词，不要自己拼 node/ffmpeg 命令。
+#  mv.sh —— 一条命令一个动作。你只需要记这 12 个动词，不要自己拼 node/ffmpeg 命令。
 #
 #   ./mv.sh env                       环境自检（python/ffmpeg/chrome/puppeteer 缺什么）
 #   ./mv.sh init  <工程目录> --style=pixel|collage|crayon [--w=1920 --h=1080 --bpm=120 --dur=6]
@@ -22,17 +22,16 @@ set -uo pipefail
 SRC="${BASH_SOURCE[0]}"; case "$SRC" in /*) ;; *) SRC="$PWD/$SRC";; esac
 SKILL="$(cd "$(dirname "$SRC")" && pwd)"   # mv.sh 就在 skill 根目录
 S="$SKILL/scripts"
-# 本机私有配置（不进仓库）：可在这里设 MV_PYTHON / MV_WORKERS
-[ -f "$SKILL/mv.local.sh" ] && . "$SKILL/mv.local.sh"
 say() { printf '\033[1m%s\033[0m\n' "$*"; }
 die() { printf '\033[31m✗ %s\033[0m\n' "$*" >&2; exit 1; }
 warn() { printf '\033[33m! %s\033[0m\n' "$*" >&2; }
 
-# 找得到 librosa 的 python（顺序：$MV_PYTHON → python3 → 技能目录下的 .venv）
+# 找得到 librosa 的 python（本机只有 songmv 的 venv 有）
 pick_py() {
   local mod="${1:-}" c
   for c in "${MV_PYTHON:-}" "$(command -v python3 || true)" \
-           "$SKILL/.venv/bin/python" "$SKILL/.venv3/bin/python"; do
+           /Users/liumingchao/develop/private/AnythingForAI/songmv/.venv3/bin/python \
+           "$SKILL/.venv/bin/python"; do
     [ -n "$c" ] && [ -x "$c" ] || continue
     if [ -z "$mod" ] || "$c" -c "import $mod" >/dev/null 2>&1; then echo "$c"; return 0; fi
   done
@@ -49,18 +48,6 @@ cfg() {   # 从 index.html 读 CFG 里的一个数（macOS 的 grep 不支持 \b
 }
 out_w() { local p="$1"; local w; w=$(grep -oE "OUT:[[:space:]]*\{[[:space:]]*w:[[:space:]]*[0-9]+" "$p/index.html" | grep -oE '[0-9]+$'); echo "${w:-$(cfg "$p" W 1920)}"; }
 out_h() { local p="$1"; local h; h=$(grep -oE "OUT:[[:space:]]*\{[^}]*h:[[:space:]]*[0-9]+" "$p/index.html" | grep -oE '[0-9]+$'); echo "${h:-$(cfg "$p" H 1080)}"; }
-# 拼一张接触表。没有 Pillow 就明确跳过，不要假装成功
-sheet() {  # $1=图片目录  $2=输出 jpg
-  local py; if py=$(pick_py PIL); then
-    "$py" "$S/contact_sheet.py" --images "$1" -o "$2" >/dev/null 2>&1 \
-      && return 0 || { warn "拼图失败：$1 → $2（看 contact_sheet.py 的报错）"; return 1; }
-  else
-    warn "拼图跳过：没有装 Pillow（pip install Pillow）；单帧图在 $1"; return 1
-  fi
-}
-shot_line() {  # $1=图片目录 $2=拼图路径 → 打印"…（拼图 xxx）"，拼图没出来就不提
-  if [ -f "$2" ]; then echo "$1（拼图 $2）"; else echo "$1"; fi
-}
 need_proj() { [ -n "${1:-}" ] || die "要给工程目录，例如 work/my-mv"; [ -f "$1/index.html" ] || die "$1 里没有 index.html（用 ./mv.sh init 建）"; }
 
 cmd="${1:-help}"; shift || true
@@ -75,7 +62,7 @@ env)
   printf 'chrome    '; ls -d "/Applications/Google Chrome.app" 2>/dev/null || echo "没找到 Chrome（puppeteer 要用）"
   printf 'puppeteer '; (cd "$SKILL" && node -e "console.log('ok  '+require.resolve('puppeteer-core'))" 2>/dev/null) \
       || echo "缺 → 在有 node_modules 的目录里跑，或 cd $SKILL && npm i puppeteer-core"
-  printf 'librosa   '; p=$(pick_py librosa) && echo "$p" || echo "没有 → 设 MV_PYTHON 指向有 librosa 的 python，或退到 beat_grid.py（只需 numpy）"
+  printf 'librosa   '; p=$(pick_py librosa) && echo "$p" || echo "没有 → 用 beat_grid.py（只需 numpy）或手填 BPM"
   printf 'numpy     '; p=$(pick_py numpy) && echo "$p" || echo "没有 → 只能手填 BPM"
   printf 'Pillow    '; p=$(pick_py PIL) && echo "$p" || echo "没有 → 接触表/拼图出不来（read_image 看图不受影响）"
   [ $local_ok = 0 ] && echo "ENV PASS" || { echo "ENV FAIL"; exit 1; }
@@ -197,13 +184,13 @@ stills|sheet|sweep)
     t0="${1:?用法: ./mv.sh sweep <工程> 2.0 3.0}"; t1="${2:?要到几秒}"
     times=$(node -e "const a=+process.argv[1],b=+process.argv[2],o=[];for(let t=a;t<=b+1e-9;t+=1/15)o.push(t.toFixed(3));console.log(o.join(','))" "$t0" "$t1")
     node "$S/render_frames.mjs" --page "$proj/index.html" --times "$times" --out "$proj/out/sweep" --width "$W" --height "$H" --format jpg || die "出图失败"
-    sheet "$proj/out/sweep" "$proj/out/sweep.jpg" || true
-    say "区间图：$(shot_line "$proj/out/sweep/" "$proj/out/sweep.jpg")"
+    "$(pick_py PIL)" "$S/contact_sheet.py" --images "$proj/out/sweep" -o "$proj/out/sweep.jpg" 2>/dev/null || true
+    say "区间图：$proj/out/sweep/（拼图 $proj/out/sweep.jpg）"
   else
     times="${1:-}"; [ -n "$times" ] || die "用法: ./mv.sh stills <工程> 0.4,1.6,2.9（逗号分隔的秒数）"
     node "$S/render_frames.mjs" --page "$proj/index.html" --times "$times" --out "$proj/out/stills" --width "$W" --height "$H" --format jpg || die "出图失败"
-    sheet "$proj/out/stills" "$proj/out/stills.jpg" || true
-    say "关键帧：$(shot_line "$proj/out/stills/" "$proj/out/stills.jpg")"
+    "$(pick_py PIL)" "$S/contact_sheet.py" --images "$proj/out/stills" -o "$proj/out/stills.jpg" 2>/dev/null || true
+    say "关键帧：$proj/out/stills/（拼图 $proj/out/stills.jpg）"
   fi
   ;;
 
@@ -246,11 +233,19 @@ deliver)
   # 1) 把原曲封回去（渲染出的音轨会被编码器压 2–4dB，必须换回原曲并统一响度）
   "$(pick_py)" "$S/finalize_audio.py" "$proj/out/raw.mp4" "$song" -o "$proj/out/deliver.mp4" --target-lufs -14 "$@" \
     || die "封音失败"
-  # 2) 抖音交付参数（bt709 三件套 + 高码率，不用 crf：暗场会被压得很低）
+  # 2) 抖音交付参数（bt709 三件套 + CRF + 码率上限）
+  #    纸艺/蜡笔这类"满画面纸纹"的片子很吃码率：crf 20 会到 9+ Mbps（5 分钟 = 200MB+）。
+  #    默认 crf 23 · maxrate 8M 基本看不出差别；要更小就 ./mv.sh deliver … --crf 26
+  #    或 MV_DENOISE=1（轻降噪，纸纹略软，体积再省 ~15%）
   tmp="$proj/out/_d.mp4"
-  ffmpeg -v error -y -i "$proj/out/deliver.mp4" -c:v libx264 -preset slow -b:v 8M -maxrate 12M -bufsize 16M \
+  dcrf="${MV_CRF:-23}"; dmax="${MV_MAXRATE:-8M}"
+  dnf=""
+  [ "${MV_DENOISE:-0}" = "1" ] && dnf="-vf hqdn3d=1.5:1:5:5"
+  ffmpeg -v error -y -i "$proj/out/deliver.mp4" $dnf -c:v libx264 -preset slow -crf "$dcrf" -maxrate "$dmax" -bufsize 16M \
     -pix_fmt yuv420p -color_range tv -color_primaries bt709 -color_trc bt709 -colorspace bt709 \
     -c:a copy -movflags +faststart "$tmp" || die "转码失败"
+  echo "视频参数：crf=$dcrf maxrate=$dmax${dnf:+ + 轻降噪}"
+  echo "文件大小：$(du -h "$proj/out/deliver.mp4" | cut -f1)（$(ffprobe -v error -show_entries format=size -of default=nw=1:nk=1 "$proj/out/deliver.mp4") 字节）"
   mv "$tmp" "$proj/out/deliver.mp4"
   # 3) 自检：分辨率/帧率/编码/音轨/响度/黑场
   echo "──── 交付自检 ────"
