@@ -1,0 +1,9 @@
+{
+  "name": "music-mv",
+  "private": true,
+  "type": "module",
+  "description": "music MV skill — code-drawn frames, three art styles (pixel / collage / crayon)",
+  "dependencies": {
+    "puppeteer-core": "^25.11.0"
+  }
+}

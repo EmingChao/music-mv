@@ -1,0 +1,256 @@
+# ============================================================================
+# banned_words_zh.txt —— 中文短视频（抖音/B站/小红书）歌词字幕用词分级表
+# ============================================================================
+# 格式：每行  词 <TAB> 等级 <TAB> 谐音建议
+#   · 第三列可留空（用 <TAB> 结尾即可），留空表示「没有现成谐音，工具会退化为星号」
+#   · # 开头为注释行，工具会跳过
+#   · 匹配是「子串匹配」，所以尽量收多字词；单字词容易误伤（如「最」「死」）
+#
+# 等级取值（7 类）：
+#   dirty      脏话      —— 直接侮辱、性辱骂、国骂本体及其缩写/谐音变体
+#   vulgar     低俗      —— 性暗示、身体部位、擦边情色，不构成辱骂但平台限流
+#   violence   暴力血腥  —— 致死、见血、自残、凶器描写，抖音对自残自杀零容忍
+#   ad         广告法    —— 《广告法》第九条绝对化用语，商用内容必删
+#   medical    医疗夸大  —— 疗效承诺、包治、替代药物，属《医疗广告管理办法》红线
+#   diversion  导流引流  —— 把观众导去站外/私域，平台最恨的一类
+#   platform   平台不鼓励—— 不违规但会被限流、不给流量池的表述
+#
+# 【判定原则】
+#   dirty     ：只要「指向人的侮辱」就收。变体要一起收——拼音缩写（SB/TMD/NMD/CNM）、
+#               同音近音（傻逼→煞笔/沙比）、方言（妈卖批）。收的是「可被听出来」的形态，
+#               因为审核是机器+人双轨，谐音一样会被识别。
+#   vulgar    ：收「性」与「身体」的直接指称；不收音近但无实义的词，避免误伤正常歌词。
+#   violence  ：收「结果性」词汇（打死/砍死/血洗/割腕/跳楼），不收「过程性」动作
+#               （打/砍/推），否则「推开门」也会被命中。
+#   ad        ：只收多字绝对化短语。裸「最」「第一」单字不进表——它们会命中
+#               「最后」「第一次」，交给人工复核；工具命中后会提示「需确认语境」。
+#   medical   ：收疗效承诺与「替代正规医疗」的表述；普通保健词（如「养生」）不收。
+#   diversion ：收导流动作与站外平台名；单纯出现品牌名不一定违规，但字幕里出现
+#               「加微信」这类动作词几乎必被判导流。
+#   platform  ：收「求互动/搬运/破解」类，属于运营建议而非合规红线。
+#
+# 【刻意不收：政治敏感 / 涉政涉恐 / 涉未成年人类】
+#   这一类的具体词表因地区、时期、平台版本而频繁变动，写死在技能包里既不准也危险
+#   （容易过期，也容易被误用成「规避审核」的工具）。正确做法是：
+#     · 发布前查平台最新《社区自律公约》《社区规范》的「违法违规」章节；
+#     · 歌词涉及历史、民族、宗教、领土、领导人、突发公共事件时，整句改词或删句，
+#       不要试图用谐音绕过去——这类内容的审核是人工+关键词双轨，谐音等于加重情节；
+#     · 拿不准就整句留白（caption.js 的 blank）或直接换一首歌。
+# ============================================================================
+
+# ---------------------------------------------------------------- dirty 脏话
+他妈的	dirty	他喵的
+他妈	dirty	他喵
+妈的	dirty	喵的
+妈的巴子	dirty	喵的巴子
+妈了个逼	dirty	喵了个咪
+妈卖批	dirty	喵卖批
+卧槽	dirty	我擦
+我操	dirty	我擦
+我草	dirty	我艹
+我擦	dirty	我唔
+操你妈	dirty	草你喵
+操你	dirty	草你
+草泥马	dirty	草泥喵
+草你妈	dirty	草你喵
+日你妈	dirty	日你喵
+你妈的	dirty	你喵的
+你妈	dirty	你喵
+尼玛的	dirty	尼喵的
+尼玛	dirty	尼喵
+泥马	dirty	泥喵
+傻逼	dirty	傻哔
+傻比	dirty	傻哔
+煞笔	dirty	傻哔
+沙比	dirty	傻哔
+傻屌	dirty	傻喵
+二逼	dirty	二哔
+二B	dirty	二哔
+装逼	dirty	装哔
+牛逼	vulgar	牛掰
+牛B	vulgar	牛掰
+狗日的	dirty	狗喵的
+狗娘养的	dirty	狗喵养的
+王八蛋	dirty	王八喵
+混蛋	dirty	混喵
+畜生	dirty	畜喵
+狗东西	dirty	狗喵西
+去死吧	dirty	走开吧
+去死	dirty	走开
+该死	dirty	该…
+滚你妈	dirty	滚你喵
+滚蛋	vulgar	滚开
+特么的	dirty	特喵的
+特么	dirty	特喵
+TMD	dirty	特喵的
+NMD	dirty	你喵的
+CNM	dirty	草你喵
+SB	dirty	傻哔
+MD	dirty	喵的
+WC	dirty	我擦
+卧擦	dirty	我擦
+我日	dirty	我热
+日了狗	dirty	热了狗
+
+# ---------------------------------------------------------------- vulgar 低俗
+贱人	vulgar	贱喵
+贱货	vulgar	贱喵
+婊子	vulgar	表子
+骚货	vulgar	留白
+发骚	vulgar	留白
+骚气	vulgar	留白
+上床	vulgar	相处
+一夜情	vulgar	留白
+约炮	vulgar	约饭
+打炮	vulgar	留白
+嫖	vulgar	留白
+卖淫	vulgar	留白
+援交	vulgar	留白
+黄片	vulgar	留白
+色情	vulgar	留白
+淫荡	vulgar	留白
+淫秽	vulgar	留白
+强奸	vulgar	留白
+做爱	vulgar	留白
+性交	vulgar	留白
+春药	vulgar	留白
+迷药	vulgar	留白
+巨乳	vulgar	留白
+波霸	vulgar	留白
+胸器	vulgar	留白
+露点	vulgar	留白
+脱衣	vulgar	留白
+打飞机	vulgar	留白
+撸管	vulgar	留白
+调情	vulgar	留白
+荤段子	vulgar	留白
+
+# ---------------------------------------------------------------- violence 暴力血腥
+死全家	violence	留白
+打死	violence	打…
+砍死	violence	砍…
+弄死你	violence	收拾你
+找死	violence	找喵
+血洗	violence	洗
+血流成河	violence	留白
+尸横遍野	violence	留白
+尸体	violence	留白
+碎尸	violence	留白
+割腕	violence	留白
+割喉	violence	留白
+爆头	violence	留白
+跳楼	violence	留白
+自杀	violence	留白
+自残	violence	留白
+上吊	violence	留白
+喝药自尽	violence	留白
+灭门	violence	留白
+屠村	violence	留白
+枪杀	violence	留白
+炸弹	violence	留白
+砍刀	violence	留白
+
+# ---------------------------------------------------------------- ad 广告法绝对化用语
+最好	ad	更好
+最佳	ad	优选
+最强	ad	更强
+最低	ad	更低
+最高	ad	更高
+最快	ad	更快
+最便宜	ad	更实惠
+最低价	ad	更实惠
+史上最	ad	史上罕见
+销量第一	ad	销量领先
+排名第一	ad	排名靠前
+第一品牌	ad	知名品牌
+全网最低	ad	更实惠
+唯一	ad	少有
+独家	ad	特色
+顶级	ad	高端
+极致	ad	出色
+国家级	ad	高品质
+世界级	ad	国际水准
+绝对	ad	相当
+百分百	ad	高比例
+100%	ad	高比例
+万能	ad	多用途
+永久	ad	长期
+立竿见影	ad	见效较快
+无与伦比	ad	出众
+包您满意	ad	力求满意
+秒杀	ad	优惠
+稳赚不赔	ad	有机会
+零风险	ad	风险较低
+绝对安全	ad	较为安全
+
+# ---------------------------------------------------------------- medical 医疗夸大
+治愈	medical	缓解
+根治	medical	改善
+包治	medical	有助于
+药到病除	medical	有帮助
+无副作用	medical	副作用较小
+神药	medical	好物
+特效药	medical	留白
+抗癌	medical	留白
+降血糖	medical	留白
+降血压	medical	留白
+壮阳	medical	留白
+丰胸	medical	留白
+减肥药	medical	留白
+排毒	medical	调理
+祖传秘方	medical	传统配方
+医院同款	medical	留白
+替代药物	medical	留白
+特效偏方	medical	留白
+一次见效	medical	见效因人而异
+
+# ---------------------------------------------------------------- diversion 导流引流
+加微信	diversion	私信
+微信号	diversion	私信
+加V	diversion	私信
+加vx	diversion	私信
+vx	diversion	私信
+v信	diversion	私信
+扫码	diversion	留白
+二维码	diversion	留白
+扫我	diversion	留白
+评论区链接	diversion	留白
+主页链接	diversion	留白
+私域	diversion	留白
+进群	diversion	留白
+加群	diversion	留白
+联系方式	diversion	留白
+电话咨询	diversion	留白
+淘宝	diversion	平台
+拼多多	diversion	平台
+代购	diversion	留白
+站外	diversion	留白
+完整版在	diversion	留白
+
+# ---------------------------------------------------------------- platform 平台不鼓励
+点赞关注	platform	留白
+一键三连	platform	留白
+双击666	platform	留白
+求赞	platform	留白
+求关注	platform	留白
+涨粉	platform	留白
+引流	platform	留白
+外链	platform	留白
+搬运	platform	二创
+白嫖	platform	免费
+破解版	platform	留白
+盗版	platform	留白
+枪版	platform	留白
+资源在简介	platform	留白
+看我主页	platform	留白
+评论区自取	platform	留白
+
+# ---------------------------------------------------------------- 政治敏感：只给类目，不列词
+# 【类目说明 · 不列具体词】
+#   违法违规：涉政、涉恐、涉民族宗教、涉领土主权、涉领导人及其家属、
+#             涉突发公共事件与灾难的未经证实信息。
+#   涉未成年人：任何性化、暴力化未成年人的表述，以及「童星」「养成」类擦边话术。
+#   【处理方式】不在本表列词，原因见文件头。做法：
+#     1) 发布前对照平台当日《社区自律公约》「违法违规」与「未成年保护」章节；
+#     2) 歌词涉此类题材时，整句删除或换歌，不做谐音规避；
+#     3) 不确定就整句留白（caption.js 的 mask style: 'blank'），或直接不用这首歌。

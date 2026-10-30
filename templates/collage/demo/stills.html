@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<!-- 角色设定图：三视图 + 表情表 + 动作定格。渲染：
+       node scripts/render_frames.mjs --page stills.html --times 0 --width 1920 --height 1080 --out . --name sheet -->
+<style>html, body { margin: 0; padding: 0; overflow: hidden; background: #F3EFE6; } canvas { display: block; }</style>
+<script src="../engine.js"></script>
+<script src="../character.js"></script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+const CFG = { W: 1920, H: 1080, FPS: 30, BPM: 120, OFF: 0, LYRIC: { bottom: 0.9, size: 60, color: '#2B2A26', ink: '#FFF9EE', align: 'center' } };
+const cv = document.getElementById('c');
+cv.width = CFG.W; cv.height = CFG.H;
+const ctx = cv.getContext('2d', { alpha: false });
+const API = { W: CFG.W, H: CFG.H, BEAT: 0.5, beatPhase: () => 0, beatIndex: () => 0,
+              ease: (u) => u * u * (3 - 2 * u), lerp: (a, b, u) => a + (b - a) * u, clamp: (x, a = 0, b = 1) => Math.max(a, Math.min(b, x)),
+              ENGINE: window.ENGINE, CHAR: window.CHARACTER };
+window.sceneReady = (async () => {
+  if (window.ENGINE.setup) await window.ENGINE.setup(CFG, API);
+  if (window.CHARACTER && window.CHARACTER.setup) await window.CHARACTER.setup(CFG, API);
+  return true;
+})();
+window.renderAt = async () => {
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.fillStyle = '#F3EFE6'; ctx.fillRect(0, 0, CFG.W, CFG.H);
+  window.ENGINE.sheet(ctx, CFG, API);
+  if (window.ENGINE.endFrame) window.ENGINE.endFrame(ctx, 0, CFG);
+  return cv.toDataURL('image/png');
+};
+</script>
+</body>
+</html>

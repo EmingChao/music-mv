@@ -1,0 +1,29 @@
+# 依赖
+node_modules/
+node_modules
+**/node_modules/
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+
+# 产物与工作区
+out/
+*.mp4
+*.mov
+
+# 媒体（歌曲/歌词/素材不进库）
+*.ncm
+*.mp3
+*.wav
+*.flac
+*.m4a
+*.lrc
+*.srt
+
+# 系统
+.DS_Store
+
+# 本机私有配置（python 路径等）
+mv.local.sh

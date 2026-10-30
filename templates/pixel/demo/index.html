@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<!--
+  pixel 画风的装配页：结构照抄 _shared/index.html，只改了脚本路径。
+  像素世界是 320×180（CFG.W/H），整数放大到 1920×1080（CFG.OUT）；
+  歌词和扫描线/暗角/颗粒画在 1920×1080 的清晰层上。
+-->
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #101014; }
+  canvas { display: block; }
+</style>
+
+<script src="../engine.js"></script>
+<script src="../character.js"></script>
+<script src="lyrics.js"></script>
+
+<script>
+window.CFG = { W: 320, H: 180, OUT: { w: 1920, h: 1080 }, FPS: 30, DURATION: 6.0, BPM: 120, OFF: 0.0,
+  LYRIC: { bottom: 0.90, size: 68, color: '#FFF6DC', ink: '#15121C', align: 'center' }, SAFE_BOTTOM: 0.15,
+  DEBUG: /[?&]debug=1/.test(location.search) };
+window.SHOTS = [];
+</script>
+
+<script src="shots/01.js"></script>
+<script src="shots/02.js"></script>
+
+<!-- assemble.js 要在 <body> 之后跑（它一上来就找 #c 画布），所以加 defer -->
+<script src="../../_shared/assemble.js" defer></script>
+</head>
+<body>
+<canvas id="c"></canvas>
+</body>
+</html>

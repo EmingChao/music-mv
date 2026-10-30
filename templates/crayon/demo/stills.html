@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<!-- 角色设定图：三视图 + 表情表 + 动作定格。渲染：
+       node <skill>/scripts/render_frames.mjs --page stills.html --times 0 --width 1920 --height 1080 --out . --name character-sheet
+     engine.js 里实现 ENGINE.sheet(ctx, CFG)，用这个画风自己的版式排这张图。 -->
+<style>html, body { margin: 0; padding: 0; overflow: hidden; background: #F3EFE6; } canvas { display: block; }</style>
+<script src="../engine.js"></script>
+<script src="../character.js"></script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<script>
+// 画布尺寸：像素风的"世界"是 320×180，所以设定图也在小画布上排，再整数放大 —— 和正式渲染一致。
+const PIX = window.ENGINE.id === 'pixel';
+const RW = PIX ? 320 : 1920, RH = PIX ? 180 : 1080;
+const CFG = { W: RW, H: RH, OW: 1920, OH: 1080, FPS: 30, BPM: 120, OFF: 0, OUT: PIX ? { w: 1920, h: 1080 } : null,
+              LYRIC: { bottom: 0.9, size: 60, color: '#FFF8E7', ink: '#1B1B29', align: 'center' } };
+const cv = document.getElementById('c');
+cv.width = 1920; cv.height = 1080;
+const ctx = cv.getContext('2d', { alpha: false });
+const wc = PIX ? Object.assign(document.createElement('canvas'), { width: RW, height: RH }) : null;
+const g = PIX ? wc.getContext('2d', { alpha: false }) : ctx;
+if (PIX) g.imageSmoothingEnabled = false;
+const API = { W: RW, H: RH, OW: 1920, OH: 1080, BEAT: 0.5, beatPhase: () => 0, beatIndex: () => 0,
+              ease: (u) => u * u * (3 - 2 * u), lerp: (a, b, u) => a + (b - a) * u, clamp: (x, a = 0, b = 1) => Math.max(a, Math.min(b, x)),
+              ENGINE: window.ENGINE, CHAR: window.CHARACTER, MH: RH * 0.24, cx: RW / 2, cy: RH / 2, SAFE_Y: RH * 0.85 };
+window.sceneReady = (async () => {
+  if (window.ENGINE.setup) await window.ENGINE.setup(CFG, API);
+  if (window.CHARACTER && window.CHARACTER.setup) await window.CHARACTER.setup(CFG, API);
+  return true;
+})();
+window.renderAt = async () => {
+  g.setTransform(1, 0, 0, 1, 0, 0); g.globalAlpha = 1;
+  g.fillStyle = PIX ? '#141420' : '#F3EFE6'; g.fillRect(0, 0, RW, RH);
+  window.ENGINE.sheet(g, CFG, API);
+  ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
+  if (PIX) { ctx.imageSmoothingEnabled = false; ctx.drawImage(wc, 0, 0, RW, RH, 0, 0, 1920, 1080); }
+  if (window.ENGINE.endFrame) window.ENGINE.endFrame(ctx, 0, CFG);
+  return cv.toDataURL('image/png');
+};
+</script>
+</body>
+</html>

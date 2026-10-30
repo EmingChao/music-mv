@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<!--
+  ═══ 纸艺拼贴 MV 的装配页 ═══════════════════════════════════════════════
+  这个文件只管"装"：加载画风引擎、角色、歌词、镜头，然后逐帧渲染。
+  改 MV 时只动两处：① 下面 CFG 那一块  ② 中间 <script src="shots/.."> 的行。
+  引擎/装配逻辑在 ../../_shared/assemble.js，本文件不需要动。
+-->
+<style>
+  html, body { margin: 0; padding: 0; overflow: hidden; background: #101014; }
+  canvas { display: block; }
+</style>
+
+<!-- ① 画风引擎 -->
+<script src="../engine.js"></script>
+<!-- ② 角色（所有镜头共用同一份，角色才不会漂移） -->
+<script src="../character.js"></script>
+<!-- ③ 歌词时间轴 -->
+<script src="lyrics.js"></script>
+
+<script>
+// ═══════════════════════ ④ CFG：开工时只改这一段 ═══════════════════════
+window.CFG = { W: 1920, H: 1080, FPS: 30, DURATION: 6.0, BPM: 120, OFF: 0.0,
+  LYRIC: { bottom: 0.90, size: 68, color: '#2B2A26', ink: '#FFF9EE', align: 'center' }, SAFE_BOTTOM: 0.15,
+  DEBUG: /[?&]debug=1/.test(location.search) };
+window.SHOTS = [];           // 镜头注册表：shots/*.js 往里 push
+// ═════════════════════════════════════════════════════════════════════
+</script>
+
+<!-- ⑤ 镜头：每个镜头一个文件，按时间顺序列（顺序错会互相盖住） -->
+<script src="shots/01.js"></script>
+<script src="shots/02.js"></script>
+
+<!-- ⑥ 装配 + 逐帧渲染（不用动） -->
+<!-- assemble.js 要在 <body> 之后跑（它一上来就找 #c 画布），所以加 defer -->
+<script src="../../_shared/assemble.js" defer></script>
+</head>
+<body>
+<canvas id="c"></canvas>
+</body>
+</html>
