@@ -49,6 +49,18 @@ cfg() {   # 从 index.html 读 CFG 里的一个数（macOS 的 grep 不支持 \b
 }
 out_w() { local p="$1"; local w; w=$(grep -oE "OUT:[[:space:]]*\{[[:space:]]*w:[[:space:]]*[0-9]+" "$p/index.html" | grep -oE '[0-9]+$'); echo "${w:-$(cfg "$p" W 1920)}"; }
 out_h() { local p="$1"; local h; h=$(grep -oE "OUT:[[:space:]]*\{[^}]*h:[[:space:]]*[0-9]+" "$p/index.html" | grep -oE '[0-9]+$'); echo "${h:-$(cfg "$p" H 1080)}"; }
+# 拼一张接触表。没有 Pillow 就明确跳过，不要假装成功
+sheet() {  # $1=图片目录  $2=输出 jpg
+  local py; if py=$(pick_py PIL); then
+    "$py" "$S/contact_sheet.py" --images "$1" -o "$2" >/dev/null 2>&1 \
+      && return 0 || { warn "拼图失败：$1 → $2（看 contact_sheet.py 的报错）"; return 1; }
+  else
+    warn "拼图跳过：没有装 Pillow（pip install Pillow）；单帧图在 $1"; return 1
+  fi
+}
+shot_line() {  # $1=图片目录 $2=拼图路径 → 打印"…（拼图 xxx）"，拼图没出来就不提
+  if [ -f "$2" ]; then echo "$1（拼图 $2）"; else echo "$1"; fi
+}
 need_proj() { [ -n "${1:-}" ] || die "要给工程目录，例如 work/my-mv"; [ -f "$1/index.html" ] || die "$1 里没有 index.html（用 ./mv.sh init 建）"; }
 
 cmd="${1:-help}"; shift || true
@@ -185,13 +197,13 @@ stills|sheet|sweep)
     t0="${1:?用法: ./mv.sh sweep <工程> 2.0 3.0}"; t1="${2:?要到几秒}"
     times=$(node -e "const a=+process.argv[1],b=+process.argv[2],o=[];for(let t=a;t<=b+1e-9;t+=1/15)o.push(t.toFixed(3));console.log(o.join(','))" "$t0" "$t1")
     node "$S/render_frames.mjs" --page "$proj/index.html" --times "$times" --out "$proj/out/sweep" --width "$W" --height "$H" --format jpg || die "出图失败"
-    "$(pick_py PIL)" "$S/contact_sheet.py" --images "$proj/out/sweep" -o "$proj/out/sweep.jpg" 2>/dev/null || true
-    say "区间图：$proj/out/sweep/（拼图 $proj/out/sweep.jpg）"
+    sheet "$proj/out/sweep" "$proj/out/sweep.jpg" || true
+    say "区间图：$(shot_line "$proj/out/sweep/" "$proj/out/sweep.jpg")"
   else
     times="${1:-}"; [ -n "$times" ] || die "用法: ./mv.sh stills <工程> 0.4,1.6,2.9（逗号分隔的秒数）"
     node "$S/render_frames.mjs" --page "$proj/index.html" --times "$times" --out "$proj/out/stills" --width "$W" --height "$H" --format jpg || die "出图失败"
-    "$(pick_py PIL)" "$S/contact_sheet.py" --images "$proj/out/stills" -o "$proj/out/stills.jpg" 2>/dev/null || true
-    say "关键帧：$proj/out/stills/（拼图 $proj/out/stills.jpg）"
+    sheet "$proj/out/stills" "$proj/out/stills.jpg" || true
+    say "关键帧：$(shot_line "$proj/out/stills/" "$proj/out/stills.jpg")"
   fi
   ;;
 
