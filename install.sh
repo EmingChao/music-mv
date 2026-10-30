@@ -21,8 +21,8 @@ else
         for f do d="$0/${f#./}"; mkdir -p "$(dirname "$d")"; cp -p "$f" "$d"; done' "$DEST" {} + )
 fi
 
-chmod 755 "$DEST/mv.sh" "$(dirname "$DEST")"/*/install.sh 2>/dev/null || true
-chmod 644 "$DEST/SKILL.md" "$DEST/NOTICE.md" 2>/dev/null || true
+chmod 755 "$DEST/mv.sh"
+chmod 644 "$DEST/SKILL.md" "$DEST/NOTICE.md" "$DEST/README.md" 2>/dev/null || true
 
 # 运行依赖：逐帧渲染要 puppeteer-core
 if command -v node >/dev/null 2>&1 && [ ! -d "$DEST/node_modules/puppeteer-core" ]; then
