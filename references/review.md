@@ -1,9 +1,11 @@
-# 审图与交付（`read_image` 是唯一的验收标准）
+# 审图、带声审片与交付
 
 > 你的自我评价不可信，"我觉得应该没问题"是最贵的四个字。
 > 这里给一套三层审图法和 6 条硬标准，照着打勾就行。
 
 ---
+
+先静音遮字幕，比较首姿、接触和结果，再听主次鼓点。重复的帧差也可能来自原地抖肩；可用 [周期动作检查](performance.md) 缩小复核范围。
 
 ## 1. 三层审图法（每镜都走，从便宜到贵）
 
@@ -20,7 +22,7 @@ read_image work/my-mv/out/stills.jpg
 
 ### 第 2 层：条带（一镜的运动）
 ```bash
-./mv.sh sweep work/my-mv 12.0 15.0           # 每 0.25s 一格拼成一条
+./mv.sh sweep work/my-mv 12.0 15.0           # 每秒 15 格
 read_image work/my-mv/out/sweep.jpg
 ```
 看三件事：动作**方向**对不对、有没有**跳帧**（某一格突然变了位置）、有没有**某段完全不动**。
@@ -55,12 +57,12 @@ read_image work/my-mv/out/sheet.jpg
 
 | # | 标准 | 怎么验 |
 |---|---|---|
-| 1 | 没有**连续 1 秒以上几乎不动**的段 | `sweep` 看条带；相邻两格几乎一样就是不动 |
-| 2 | 切点都在打算的地方 | 对照 `STORYBOARD.md` 的"起–止"，±0.1s |
+| 1 | 静止处有意图，其他段落能看出走位或姿态变化 | `sweep` 看条带；相邻两格几乎一样就是不动 |
+| 2 | 切点都在打算的地方 | 带声复核听校的目标点；硬切与动作接触误差通常 ≤1 输出帧 |
 | 3 | 没有黑帧 | `deliver` 的 `blackdetect` 输出；接触表也能看出 |
-| 4 | 每句歌词画面演的就是这句 | 随机抽 5 句，图上找对应动作 |
+| 4 | 每个镜头推进表演或歌词的叙事意图 | 随机抽 5 句，图上找对应动作 |
 | 5 | 脸/手/道具没被歌词压住 | 单帧看；`SAFE_BOTTOM` 以下才有字 |
-| 6 | 成片响度与母带差 ≤1 dB | `deliver` 打的 LUFS 三方对比 |
+| 6 | 成片响度符合本次交付目标 | `deliver` 打的 LUFS 三方对比 |
 
 再加两条风格专属：
 - `pixel`：缩到 200px 宽仍能看出像素格；没有平滑渐变。
@@ -98,11 +100,13 @@ read_image work/my-mv/out/sheet.jpg
 | `r_frame_rate` | 30/1 | `CFG.FPS` 与渲帧的 `--fps` 要一致 |
 | `codec_name / profile` | h264 / High | 用 `deliver`，别自己拼 ffmpeg |
 | `pix_fmt` | yuv420p | 同上 |
-| `bit_rate` | 6–12 Mbps | `-b:v 8M`（`deliver` 已带） |
+| `bit_rate` | 以工程交付参数为准 | 检查暗场、细线与颗粒是否糊成块 |
 | `Integrated loudness` | −14 ±1 LUFS | `deliver --target-lufs` 微调 |
 | `True peak` | ≤ −1 dBTP | 同上 |
 | `blackdetect` | 无输出 | 找黑帧所在秒 → 对应镜头 |
 | `duration` | 与歌长差 ≤0.2s | `CFG.DURATION` |
+
+响度、真峰值和黑场要单独复核；脚本的 PASS 只覆盖部分技术参数。
 
 **最后一步**：`present work/my-mv/out/deliver.mp4`，并把接触表缩略图贴给用户（`![](out/sheet.jpg)`）。
 

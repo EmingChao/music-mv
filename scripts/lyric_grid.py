@@ -20,6 +20,7 @@
 
 时间约定：表格里的时间 = 音频时间（秒）。粘进 LY 之前，如果成片只截了歌的一段，记得整体减去 clip 起点。
 """
+import json
 import argparse
 import csv
 import io
@@ -58,13 +59,24 @@ def ts_to_sec(tag):
     return mm * 60 + ss + (0.0 if fr is None else int(fr) / (10 ** len(fr)))
 
 
-def parse_lrc(raw):
-    """返回 (entries, meta, untimed, warnings)。
+def parse_enhanced_segments(line):
+    """解析增强型 LRC 的字级起始秒，返回纯文本和字符时间。"""
+    tags = list(ENH_RE.finditer(line))
+    if not tags:
+        return strip_marks(line), []
+    words = []
+    for i, tag in enumerate(tags):
+        stamp = ts_to_sec(tag.group(0)[1:-1])
+        end = tags[i + 1].start() if i + 1 < len(tags) else len(line)
+        segment = line[tag.end():end]
+        for ch in segment:
+            words.append((ch, stamp))
+    return strip_marks(line), words
 
-    entries: [(start_seconds, text)]，按时间升序，text 已去标签（可能是空串 = 间奏占位）。
-    untimed: 没有任何时间戳的歌词行（会被顺排到末尾并告警）。
-    """
-    meta, entries, untimed, warns = {}, [], [], []
+
+def parse_lrc(raw):
+    """返回 entries、meta、untimed、warnings 和增强型 LRC 字级时间。"""
+    meta, entries, untimed, warns, word_map = {}, [], [], [], {}
     offset_ms = 0
     for line in raw.splitlines():
         s = line.strip()
@@ -82,25 +94,34 @@ def parse_lrc(raw):
             continue
         stamps = list(TS_RE.finditer(s))
         if not stamps:
-            # 只有逐字标记的增强行（没有 [mm:ss.xx] 行首戳）：用第一个词的时间当句首
             enh = list(ENH_RE.finditer(s))
             if enh:
-                entries.append((ts_to_sec(enh[0].group(0)[1:-1]), ENH_RE.sub('', s).strip()))
+                text, words = parse_enhanced_segments(s)
+                start = ts_to_sec(enh[0].group(0)[1:-1])
+                entries.append((start, text))
+                if words:
+                    word_map[(round(start, 6), text)] = words
                 continue
             if count_chars(s):
                 untimed.append(s)
             continue
-        text = strip_marks(s)
+        text, words = parse_enhanced_segments(s)
         for st in stamps:
-            entries.append((ts_to_sec(st.group(0)[1:-1]), text))
+            start = ts_to_sec(st.group(0)[1:-1])
+            entries.append((start, text))
+            if words:
+                word_map[(round(start, 6), text)] = words
     entries.sort(key=lambda x: x[0])
     if offset_ms:
-        # LRC 的 [offset:+500] 约定：正值让歌词提前 0.5s 出现
-        entries = [(max(0.0, t - offset_ms / 1000.0), txt) for t, txt in entries]
+        shift = offset_ms / 1000.0
+        entries = [(max(0.0, t - shift), txt) for t, txt in entries]
+        word_map = {
+            (round(max(0.0, t - shift), 6), txt): [(ch, max(0.0, wt - shift)) for ch, wt in words]
+            for (t, txt), words in word_map.items()
+        }
         warns.append('应用了 LRC 头部的 [offset:%+d]（歌词整体%s %.2fs）'
-                     % (offset_ms, '提前' if offset_ms > 0 else '延后', abs(offset_ms) / 1000.0))
-    return entries, meta, untimed, warns
-
+                     % (offset_ms, '提前' if offset_ms > 0 else '延后', abs(shift)))
+    return entries, meta, untimed, warns, word_map
 
 def estimate_duration(text, gap):
     """纯文本模式下一句大概占多久：约 4.2 字/秒 + 0.35s 余量，最短 1.2s。"""
@@ -413,6 +434,7 @@ def main(argv):
     ap.add_argument('--maxlen', type=int, default=14, help='一句多少字算超长（默认 14）')
     ap.add_argument('--gap', type=float, default=0.4, help='纯文本顺排时句与句之间的空隙秒数（默认 0.4）')
     ap.add_argument('--out', default='grid.md', help='Markdown 输出路径（默认 grid.md；传空串跳过）')
+    ap.add_argument('-o', '--js', help='导出装配页使用的 lyrics.js')
     ap.add_argument('--csv', default='grid.csv', help='CSV 输出路径（默认 grid.csv；传空串跳过）')
     ap.add_argument('--shots', default='auto', help='auto（默认，按规则自动分镜）或整数 N 强制均分 N 个镜')
     args = ap.parse_args(argv)
@@ -451,7 +473,7 @@ def main(argv):
         sys.stderr.write('FAIL  歌词文件是空的: %s\n' % path)
         return 1
 
-    entries, meta, untimed, lrc_warns = parse_lrc(raw)
+    entries, meta, untimed, lrc_warns, word_map = parse_lrc(raw)
     warns.extend(lrc_warns)
     plain_mode = False
 
@@ -499,6 +521,20 @@ def main(argv):
     sys.stdout.flush()
 
     wrote = []
+    if args.js:
+        # LRC 原始起止时间直接供装配器使用；--offset 仅控制报告的节拍相位。
+        js_dir = os.path.dirname(os.path.abspath(args.js))
+        os.makedirs(js_dir, exist_ok=True)
+        with io.open(args.js, 'w', encoding='utf-8') as output:
+            lyrics_out = []
+            for a, b, txt in sents:
+                entry = [a, b, txt]
+                words = word_map.get((round(a, 6), txt))
+                if words:
+                    entry.append([{'ch': ch, 't': wt} for ch, wt in words])
+                lyrics_out.append(entry)
+            output.write('window.LYRICS = ' + json.dumps(lyrics_out, ensure_ascii=False) + ';\n')
+        wrote.append(args.js)
     if args.out:
         out_dir = os.path.dirname(os.path.abspath(args.out))
         if out_dir and not os.path.isdir(out_dir):

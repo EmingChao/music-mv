@@ -2,7 +2,7 @@
 
 **把一首歌做成有画面的 MV。** 画面不是视频模型生成的，是**让代码把每一帧画出来**，画面跟着音乐走，最后合成一条视频。
 
-三种画风：**像素游戏风**（16bit 对话框歌词）· **纸艺拼贴**（撕纸＋胶带＋纸片投影）· **扁平绘本／蜡笔手绘**（蜡笔抖线＋水彩填色＋纸纹）。
+三种基础画风分别是像素、纸艺拼贴和蜡笔绘本。每首歌都可以重新设计角色、场景、镜头语言、材质色阶和字幕层。模板中的角色和场景只用于排练与接口示例，正式工程需要按歌词和剧情替换。
 
 既可以当一个 agent 技能用（`SKILL.md` 驱动，说一句"给这首歌做个 MV"就跑），也可以在终端里用 `./mv.sh` 一个动词一个动词地手动跑。
 
@@ -12,11 +12,11 @@
 
 | `--style=` | 长相 | 适合 |
 |---|---|---|
-| `pixel` | 320×180 的像素世界整数放大到 1080p，游戏 HUD 外框，对话框式歌词，中文靠独立清晰层 | 说唱、游戏感、节奏硬的歌 |
+| `pixel` | 默认 640×360 世界画布，输出 1920×1080，字幕和质感在清晰层绘制 | 说唱、游戏感、节奏硬的歌 |
 | `collage` | 撕纸边缘＋胶带＋纸片投影，手作温度，拼贴构图 | 民谣、怀旧、叙事口吻 |
 | `crayon` | 蜡笔抖线＋多层低透明度填色＋缓存纸纹，扁平绘本 | 童谣、治愈、轻松的歌 |
 
-三套画风共用同一只角色（`templates/*/character.js`，默认「阿蟹」，可整个换掉）。
+像素工程可按项目选择 320×180、640×360、1280×720 或 1920×1080 世界画布。世界画布与输出画布保持整数放大比例。模板角色和场景是可替换的排练资产，不限定正式 MV 的人物或美术。
 
 ## 为什么是"画"出来的
 
@@ -69,8 +69,9 @@ cd ~/music-mv && npm install
 ./mv.sh env                                          # 先确认 python/ffmpeg/Chrome/puppeteer 齐不齐
 ./mv.sh init ./我的MV --style=pixel --bpm=92 --dur=210
 ./mv.sh ncm  ~/歌.ncm                                # 网易云 .ncm 先还原（可选，见下）
-./mv.sh analyze ./我的MV/歌.mp3                      # → song-analysis.json（BPM/拍位/段落）
-./mv.sh lyric   ./歌.lrc                             # → lyrics.js（没有 LRC 就 lyric_grid.py 按拍位顺排）
+./mv.sh analyze ./我的MV/歌.mp3 -o ./我的MV/song-analysis.json --rhythm ./我的MV/rhythm.js                      # → song-analysis.json（BPM/拍位/段落）
+./mv.sh lyric ./歌.lrc -o ./我的MV/lyrics.js                             # → lyrics.js（增强型 LRC 保留字级时间）
+./mv.sh storyboard ./我的MV --analysis=./我的MV/song-analysis.json  # → STORYBOARD.md 草稿
 # … 写 shots/*.js：一镜一个文件 …
 ./mv.sh check   ./我的MV                              # 静态自检：接线/首尾相接/黑名单/歌词轴，退出码 0/1
 ./mv.sh stills  ./我的MV 0.4,1.6,2.8                 # 关键帧 + 接触表，逐镜审图
@@ -84,7 +85,7 @@ cd ~/music-mv && npm install
 
 渲染超过一分钟，别在前台等——丢后台跑，`out/` 下能看到进度。
 
-## 13 个动词
+## 14 个动词
 
 | 动词 | 作用 |
 |---|---|
@@ -94,6 +95,7 @@ cd ~/music-mv && npm install
 | `analyze <歌.mp3>` | 测 BPM／拍位／情绪段落 |
 | `lyric <歌.lrc\|字幕.srt>` | 歌词 → `lyrics.js` ＋ 歌词网格 |
 | `check <工程目录>` | 静态自检，退出码 0/1 |
+| `storyboard <工程目录>` | 根据歌词和节奏轨写可编辑的全曲分镜草稿 |
 | `stills <工程目录> 0.4,1.6` | 出关键帧 ＋ 接触表 |
 | `sheet <工程目录>` | 角色设定图 |
 | `sweep <工程目录> 2.0 3.0` | 区间逐帧拼条，查运动/穿帮 |
@@ -114,7 +116,7 @@ music-mv/
 │   ├── pixel/            engine.js · character.js
 │   ├── collage/          engine.js · character.js
 │   └── crayon/           engine.js · character.js
-├── scripts/              analyze_song · beat_grid · lyric_grid · mask_words
+├── scripts/              analyze_song · beat_grid · lyric_grid · storyboard_draft · mask_words
 │                         render_frames.mjs · check_shots.mjs · contact_sheet
 │                         finalize_audio · video_rhythm · srt2js · check_env
 ├── assets/               字幕黑名单词表

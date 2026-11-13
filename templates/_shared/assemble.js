@@ -34,7 +34,34 @@ const ease = (u) => { u = clamp(u); return u * u * (3 - 2 * u); };
 const beatPhase = (t) => (((t - CFG.OFF) / BEAT) % 1 + 1) % 1;   // 这一拍走到哪了 0→1
 const beatIndex = (t) => Math.floor((t - CFG.OFF) / BEAT);       // 第几拍
 const onBeat = (t, tol = 0.06) => beatPhase(t) < tol || beatPhase(t) > 1 - tol;
-const API = { W: CFG.W, H: CFG.H, OW, OH, BEAT, beatPhase, beatIndex, onBeat, ease, lerp, clamp, ENGINE, CHAR: CHARACTER,
+// 查找落在这一输出帧或更早的最近事件，支持跳帧、倒放及分段并行渲染。
+function lastCue(times, t) {
+  let left = 0, right = times.length;
+  const edge = t + 0.5 / CFG.FPS;
+  while (left < right) {
+    const mid = Math.floor((left + right) / 2);
+    if (times[mid] <= edge) left = mid + 1;
+    else right = mid;
+  }
+  return left - 1;
+}
+
+// 瞬态衰减按秒计，实测拍位可保留摇摆和局部速度变化。
+function pulse(track, t, decay = 0.16) {
+  const times = window.MV_RHYTHM?.[track] || [];
+  let hit;
+  if (times.length) {
+    const i = lastCue(times, t);
+    if (i < 0) return 0;
+    hit = times[i];
+  } else if (track === 'beats') {
+    hit = CFG.OFF + Math.floor((t + 0.5 / CFG.FPS - CFG.OFF) / BEAT) * BEAT;
+    if (hit < CFG.OFF) return 0;
+  } else return 0;
+  return clamp(1 - Math.max(0, t - hit) / Math.max(0.001, decay));
+}
+
+const API = { ...window.MV_MOTION, W: CFG.W, H: CFG.H, OW, OH, BEAT, pulse, beatPhase, beatIndex, onBeat, ease, lerp, clamp, ENGINE, CHAR: CHARACTER,
               SAFE_Y: CFG.H * (1 - CFG.SAFE_BOTTOM),
               cx: CFG.W / 2, cy: CFG.H / 2,                                   // 画面中心
               MH: CFG.H * 0.24 };                                             // 角色中景身高参考
@@ -71,6 +98,25 @@ function cameraOf(s, u) {
   return { x: lerp(f.x, o.x, k), y: lerp(f.y, o.y, k), zoom: lerp(f.zoom, o.zoom, k) };
 }
 
+// 拍摄模式先画世界，再按整格裁窗，以最近邻采样实现实际推拉。
+const filmCanvas = WC ? document.createElement('canvas') : null;
+if (filmCanvas) { filmCanvas.width = CFG.W; filmCanvas.height = CFG.H; }
+
+/** 项目场景先铺环境，再交给镜头绘制人物；前后镜独立选择材质色阶。 */
+function paintShot(g, shot, u, t, cam, bgCam = cam) {
+  ENGINE.useLook?.(shot.look);
+  const name = shot.scene ?? (shot.bg ? undefined : window.MV_DIRECTION?.scene);
+  if (name) {
+    const scene = window.MV_SCENES?.[name];
+    if (!scene?.draw) throw new Error('镜头 ' + shot.id + ' 找不到场景：' + name);
+    if (ENGINE.id === 'pixel') ENGINE.bg(g, { bg: {kind: 'custom'} }, t, u, bgCam, CFG);
+    g.save();
+    scene.draw(g, u, t, API, bgCam);
+    g.restore();
+  } else if (ENGINE.bg) ENGINE.bg(g, shot, t, u, bgCam, CFG);
+  shot.draw(g, u, t, API, cam);
+}
+
 // ── 画一个镜头：机位在这里统一处理，引擎和镜头脚本只画世界坐标 ─────────
 function renderShot(s, time, xform) {
   if (!s) return;
@@ -78,12 +124,28 @@ function renderShot(s, time, xform) {
   const cam = cameraOf(s, u);
   G.save();
   if (xform) xform();
+  if (filmCanvas && s.cam?.mode === 'crop') {
+    const world = filmCanvas.getContext('2d', { alpha: false });
+    const center = { x: CFG.W / 2, y: CFG.H / 2, zoom: 1 };
+    world.save();
+    world.fillStyle = '#101014';
+    world.fillRect(0, 0, CFG.W, CFG.H);
+    paintShot(world, s, u, time, cam, center);
+    world.restore();
+    const zoom = Math.max(1, cam.zoom);
+    const w = Math.max(1, Math.round(CFG.W / zoom)), h = Math.max(1, Math.round(CFG.H / zoom));
+    const x = clamp(Math.round(cam.x - w / 2), 0, CFG.W - w);
+    const y = clamp(Math.round(cam.y - h / 2), 0, CFG.H - h);
+    G.imageSmoothingEnabled = false;
+    G.drawImage(filmCanvas, x, y, w, h, 0, 0, CFG.W, CFG.H);
+    G.restore();
+    return;
+  }
   G.translate(CFG.W / 2, CFG.H / 2);
   G.scale(cam.zoom, cam.zoom);
   G.translate(-cam.x, -cam.y);
   G.save();
-  if (ENGINE.bg) ENGINE.bg(G, s, time, u, cam, CFG);
-  s.draw(G, u, time, API, cam);
+  paintShot(G, s, u, time, cam);
   G.restore();
   G.restore();
 }
@@ -131,14 +193,61 @@ function drawTransition(prev, cur, t) {
 }
 
 // ── 歌词：挑出当前这句，交给引擎排版（排版是画风的一部分）──────────────
+// CFG.LYRIC.stagger 打开时逐字显示。增强型 LRC 的字级时间优先，缺失时按句内进度估算。
+function charsOf(line, text, words) {
+  const s0 = line.s0, s1 = line.s1, n = Math.max(1, text.length);
+  const fallbackPop = Math.max(0.10, Math.min(0.20, (s1 - s0) * 0.22));
+  const span = Math.max(0.18, (s1 - s0) * 0.58);
+  const out = [];
+  for (let i = 0; i < n; i++) {
+    let t0 = s0 + (n <= 1 ? 0 : span * (i / (n - 1)));
+    if (Array.isArray(words) && words[i] && Number.isFinite(Number(words[i].t))) t0 = Number(words[i].t);
+    const next = Array.isArray(words) && words[i + 1] && Number.isFinite(Number(words[i + 1].t))
+      ? Number(words[i + 1].t) : s1;
+    const pop = Array.isArray(words) && words[i] ? Math.max(0.06, Math.min(0.20, next - t0)) : fallbackPop;
+    out.push({ ch: text[i], p: clamp((line.t - t0) / pop) });
+  }
+  return out;
+}
 function lyricAt(t) {
   const L = window.LYRICS || [];
+  const stag = !!(CFG.LYRIC && CFG.LYRIC.stagger);
   for (let i = 0; i < L.length; i++) {
-    const [s0, s1, text] = L[i];
-    if (t >= s0 - 0.02 && t <= s1 - 0.05)
-      return { text, t, s0, s1, i, n: L.length, p: clamp((t - s0) / Math.max(0.2, s1 - s0)) };
+    const [s0, s1, text, words] = L[i];
+    if (t >= s0 - 0.02 && t <= s1 - 0.05) {
+      const o = { text, t, s0, s1, i, n: L.length, p: clamp((t - s0) / Math.max(0.2, s1 - s0)) };
+      if (stag) o.chars = charsOf(o, String(text), words);
+      return o;
+    }
   }
   return null;
+}
+
+// 将片名叠在第一镜上方，保留首句人声、原曲时长和底部歌词的位置。
+function drawIntro(t) {
+  const d = window.MV_DIRECTION;
+  if (!d?.title || t < 0 || t >= d.introEnd) return;
+  const p = t / d.introEnd;
+  const settle = ease(p / 0.22);
+  const exit = ease((p - 0.82) / 0.18);
+  const size = Math.round(Math.min(OW * 0.085, OH * 0.10));
+  const x = Math.round(OW * (0.06 + 0.025 * settle));
+  const y = Math.round(OH * (0.21 - 0.025 * exit));
+  const palette = ENGINE.palette || {};
+  ctx.save();
+  ctx.globalAlpha = 1 - exit;
+  ctx.font = '900 ' + size + 'px "PingFang SC","Microsoft YaHei",sans-serif';
+  ctx.textBaseline = 'middle';
+  const maxWidth = OW * 0.80;
+  const width = Math.min(ctx.measureText(d.title).width, maxWidth);
+  const pad = Math.round(size * 0.18);
+  ctx.fillStyle = palette.ink || '#171525';
+  ctx.fillRect(x - pad, y - size * 0.67, width + 2 * pad, size * 1.34);
+  ctx.fillStyle = palette.lampWarm || '#FFD27A';
+  ctx.fillRect(x - pad, y + size * 0.67, (width + 2 * pad) * (0.15 + 0.85 * settle), Math.max(2, pad / 3));
+  ctx.fillStyle = palette.white || '#FFFFFF';
+  ctx.fillText(d.title, x, y, maxWidth);
+  ctx.restore();
 }
 
 // ── 一帧 ───────────────────────────────────────────────────────────────
@@ -157,10 +266,16 @@ function drawFrame(t) {
     ctx.drawImage(WC, 0, 0, CFG.W, CFG.H, 0, 0, OW, OH);
   }
   ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1;
+  ENGINE.useLook?.(cur?.look);
   if (ENGINE.endFrame) ENGINE.endFrame(ctx, t, CFG);          // 质感层：纸纹/扫描线/暗角（输出分辨率）
+  drawIntro(t);
   const ly = lyricAt(t);
   if (ly) {
-    if (ENGINE.lyric) ENGINE.lyric(ctx, ly, CFG);             // 画风自己的歌词排版
+    if (ENGINE.id === 'pixel' && window.MV_DIRECTION?.captions === 'plain') {
+      // 保留 Remotion 的逐字显现；字幕绘制在输出分辨率。
+      const text = ly.chars ? ly.chars.filter(c => c.p > 0).map(c => c.ch).join('') : ly.text;
+      defaultLyric(ctx, { ...ly, text, fullText: ly.text });
+    } else if (ENGINE.lyric) ENGINE.lyric(ctx, ly, CFG);             // 画风自己的歌词排版
     else defaultLyric(ctx, ly);
   }
   if (CFG.DEBUG) {
@@ -173,8 +288,17 @@ function drawFrame(t) {
 
 // 兜底歌词（引擎没写 lyric 时用）：先保证能看，再谈好看
 function defaultLyric(g, line) {
-  const size = Math.round(OH * 0.062);
-  g.font = `700 ${size}px "PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif`;
+  let size = Math.round(OH * 0.062);
+  const family = '"PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif';
+  g.font = `700 ${size}px ${family}`;
+  // 用完整歌词测宽，保证逐字出现时字号稳定，也为竖屏留出两侧空间。
+  if (line.fullText) {
+    const width = g.measureText(line.fullText).width;
+    if (width > OW * 0.9) {
+      size = Math.max(1, Math.floor(size * OW * 0.9 / width));
+      g.font = `700 ${size}px ${family}`;
+    }
+  }
   g.textAlign = CFG.LYRIC.align; g.textBaseline = 'middle';
   const y = OH * CFG.LYRIC.bottom;
   g.lineWidth = size * 0.22; g.strokeStyle = CFG.LYRIC.ink; g.lineJoin = 'round';
@@ -187,6 +311,9 @@ window.sceneReady = (async () => {
   validate();
   if (ENGINE.setup) await ENGINE.setup(CFG, API);
   if (CHARACTER && CHARACTER.setup) await CHARACTER.setup(CFG, API);
+  // 本地着色器、三维场景或图像可在首次截图前准备；同一场景只初始化一次。
+  const used = new Set(SHOTS.map(s => s.scene ?? (s.bg ? undefined : window.MV_DIRECTION?.scene)));
+  for (const name of used) if (name) await window.MV_SCENES?.[name]?.setup?.(CFG, API);
   drawFrame(0);
   return true;
 })();

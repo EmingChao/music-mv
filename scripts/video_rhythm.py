@@ -24,7 +24,36 @@ except ImportError:
     sys.exit("缺 numpy：pip install numpy")
 
 
+def repeated_motion(frames, fps, start):
+    """寻找有明显运动却反复回到同一姿势的片段；输出供剪辑复核的候选。"""
+    # 降采样空间以降低比较开销。按约三秒分窗，至少比较三个周期。
+    small = frames[:, ::4, ::4]
+    window = min(len(small), round(3 * fps))
+    stride = max(1, window // 2)
+    matches = []
+    for left in range(0, len(small) - window + 1, stride):
+        block = small[left:left + window]
+        best = None
+        for lag in range(max(2, round(0.15 * fps)), min(round(1.2 * fps), window // 3) + 1):
+            # 整周期帧应比半周期帧更相似。静帧或匀速移动都缺少这种关系。
+            same = np.abs(block[lag:] - block[:-lag]).mean(axis=0)
+            half = lag // 2
+            opposite = np.abs(block[half:] - block[:-half]).mean(axis=0)
+            active = opposite > 4
+            if active.mean() < 0.008:
+                continue
+            ratio = float(same[active].mean() / opposite[active].mean())
+            if ratio < 0.32 and (best is None or ratio < best[0] - 0.03):
+                best = (ratio, lag)
+        if best is not None:
+            matches.append({"start": round(start + left / fps, 3),
+                            "end": round(start + (left + window) / fps, 3),
+                            "period": round(best[1] / fps, 3)})
+    return matches
+
+
 def main():
+    """读取成片，按要求检查剪辑、静止和周期动作。"""
     ap = argparse.ArgumentParser()
     ap.add_argument("video")
     ap.add_argument("--analysis", help="analyze_song.py 存的 JSON，用来看切点卡没卡拍")
@@ -35,6 +64,7 @@ def main():
     ap.add_argument("--static", type=float, default=0.5, help="几乎不动的线（默认 0.5）")
     ap.add_argument("--cut", type=float, default=18, help="切点的线（默认 18）")
     ap.add_argument("-o", "--out", help="存 JSON")
+    ap.add_argument("--loops", action="store_true", help="筛查周期性动作；可用 --crop 框住人物")
     a = ap.parse_args()
     need("ffmpeg")
     if a.analysis and not os.path.exists(a.analysis):
@@ -83,7 +113,9 @@ def main():
         m = float(np.median(d[k:k + win]))
         t0 = a.start + (k + 1) / fps
         if m < a.static:
-            cur = [t0, t0 + win / fps] if cur is None else [cur[0], t0 + win / fps]
+            # 末段可能不足一个窗口，报告只覆盖实际读到的帧。
+            t1 = a.start + (min(k + win, len(d)) + 1) / fps
+            cur = [t0 if cur is None else cur[0], t1]
         elif cur is not None:
             still.append(cur)
             cur = None
@@ -113,9 +145,16 @@ def main():
     print("\n".join(f"- {fmt_t(s[0])}–{fmt_t(s[1])}（{s[1] - s[0]:.1f} 秒）" for s in long_still) if long_still else "没有")
     if black:
         print(f"\n## 黑帧 {len(black)} 帧\n\n" + "、".join(fmt_t(b) for b in black[:40]) + ("……" if len(black) > 40 else ""))
+    loops = repeated_motion(fr, fps, a.start) if a.loops else []
+    if a.loops:
+        print("\n## 周期动作候选（含有意舞步、环境动效；需结合分镜复核）")
+        for item in loops:
+            print(f"- {item['start']:.2f}–{item['end']:.2f}s，约每 {item['period']:.2f}s 重复")
+        if not loops:
+            print("本次取样未检出")
     if a.out:
         with open(a.out, "w", encoding="utf-8") as f:
-            json.dump({"fps": fps, "cuts": cuts, "shots": [round(float(s), 3) for s in shots], "still": still,
+            json.dump({**({"loops": loops} if a.loops else {}), "fps": fps, "cuts": cuts, "shots": [round(float(s), 3) for s in shots], "still": still,
                        "black": black, "diff": [round(float(x), 3) for x in d]}, f, ensure_ascii=False)
 
 

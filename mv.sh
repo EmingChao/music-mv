@@ -1,12 +1,13 @@
 #!/usr/bin/env bash
 # ═══════════════════════════════════════════════════════════════════════════
-#  mv.sh —— 一条命令一个动作。你只需要记这 12 个动词，不要自己拼 node/ffmpeg 命令。
+#  mv.sh —— 一条命令一个动作。你只需要记这 14 个动词，不要自己拼 node/ffmpeg 命令。
 #
 #   ./mv.sh env                       环境自检（python/ffmpeg/chrome/puppeteer 缺什么）
-#   ./mv.sh init  <工程目录> --style=pixel|collage|crayon [--w=1920 --h=1080 --bpm=120 --dur=6]
+#   ./mv.sh init  <工程目录> --style=pixel|collage|crayon [--w=1920 --h=1080 --world=640x360 --analysis=分析.json --bpm=120 --dur=6 --title=歌名 --no-intro]
 #   ./mv.sh ncm   <歌.ncm|目录>        网易云 .ncm → mp3（无损还原，可直接喂给 analyze）
 #   ./mv.sh analyze <歌.mp3>          测 BPM / 拍位 / 情绪段落 → 工程目录下的 song-analysis.json
 #   ./mv.sh lyric <歌.lrc|字幕.srt>    歌词 → lyrics.js（+ 歌词网格 md）
+#   ./mv.sh storyboard <工程目录>       依据歌词和节奏轨写 STORYBOARD.md 草稿
 #   ./mv.sh check <工程目录>           静态自检（镜头接线/首尾相接/黑名单/歌词时间轴）退出码 0/1
 #   ./mv.sh stills <工程目录> 0.4,1.6  出几张关键帧图 + 拼一张接触表（每镜审图用这个）
 #   ./mv.sh sheet <工程目录>           角色设定图（三视图/表情/动作），存 character-sheet.png
@@ -70,55 +71,7 @@ env)
 
 # ───────────────────────────────────────────────────────────────────────
 init)
-  proj="${1:?用法: ./mv.sh init <工程目录> --style=pixel}"; shift || true
-  style="pixel"; w=1920; h=1080; bpm=120; dur=6
-  for a in "$@"; do case "$a" in
-    --style=*) style="${a#*=}";; --w=*) w="${a#*=}";; --h=*) h="${a#*=}";;
-    --bpm=*) bpm="${a#*=}";; --dur=*) dur="${a#*=}";;
-  esac; done
-  [ -d "$SKILL/templates/$style" ] || die "没有这个画风：$style（可选 pixel / collage / crayon）"
-  mkdir -p "$proj/shots" "$proj/out"
-  cp "$SKILL/templates/_shared/index.html" "$proj/index.html"
-  cp "$SKILL/templates/_shared/assemble.js" "$proj/assemble.js"
-  cp "$SKILL/templates/_shared/stills.html" "$proj/stills.html"
-  cp "$SKILL/templates/$style/engine.js" "$proj/engine.js"
-  cp "$SKILL/templates/$style/character.js" "$proj/character.js"
-  cat > "$proj/lyrics.js" <<EOF
-// 歌词时间轴（scripts/srt2js.py 生成；没歌词就留这样，装配页会自动跳过）
-window.LYRICS = [];
-EOF
-  # 像素风的画布是"像素世界"：W/H 用 320×180，OUT 才是输出分辨率
-  if [ "$style" = "pixel" ]; then
-    pw=320; ph=180
-    if [ "$h" -gt "$w" ]; then pw=180; ph=320; fi
-    sed -i '' -e "s/W: 1920, H: 1080,/W: $pw, H: $ph, OUT: { w: $w, h: $h },/" "$proj/index.html"
-  else
-    sed -i '' -e "s/W: 1920, H: 1080,/W: $w, H: $h,/" "$proj/index.html"
-  fi
-  sed -i '' -e "s/BPM: 120, OFF: 0.0,/BPM: $bpm, OFF: 0.0,/" -e "s/DURATION: 6.0,/DURATION: $dur,/" "$proj/index.html"
-  cat > "$proj/shots/01.js" <<'EOF'
-// 镜头 1：照着 references/storyboard.md 的 9 列表把它填满，再照着 references/shots.md 写 draw。
-window.SHOTS.push({
-  id: 1,
-  start: 0.0, end: 4.0,                     // 和下一个镜头首尾相接；最后一个 = CFG.DURATION
-  cam: { from: { x: API_W / 2, y: API_H / 2, zoom: 1.0 }, to: { x: API_W / 2, y: API_H / 2, zoom: 1.05 } },
-  enter: { type: 'cut' },
-  note: '这句歌词在说什么：…… 画面演什么：……',
-  draw(g, u, t, API, cam) {
-    const E = API.ENGINE;
-    // 先铺天空和地面（不传 colors/kind 就是各引擎的安全默认值），再站上角色。
-    // 想要别的天空/地面：看 templates/<风格>/STYLE.md 里的 kind 表，别自己猜参数名。
-    E.sky(g, {});
-    E.ground(g, { y: API.H * 0.86 });
-    E.char(g, { x: API.W * 0.5, y: API.H * 0.86, size: API.MH, facing: 'right', expression: 'neutral', action: 'stand', u, t });
-  },
-});
-EOF
-  sed -i '' -e "s/API_W/$(cfg "$proj" W 1920)/g" -e "s/API_H/$(cfg "$proj" H 1080)/g" \
-             -e "s/start: 0.0, end: 4.0,/start: 0.0, end: $dur,/" "$proj/shots/01.js"
-  say "建好了：$proj"
-  echo "  画风 $style · $(cfg "$proj" W) × $(cfg "$proj" H)$( [ -n "$(grep -c OUT: "$proj/index.html")" ] && echo " → $(out_w "$proj")×$(out_h "$proj")" ) · ${dur}s · ${bpm}BPM"
-  echo "  下一步：① 填 shots/01.js 的 note 和 draw ② ./mv.sh check $proj ③ ./mv.sh stills $proj 1.0,3.5"
+  "$(pick_py)" "$S/init_project.py" "$@"
   ;;
 
 # ───────────────────────────────────────────────────────────────────────
@@ -142,10 +95,17 @@ analyze)
   if p=$(pick_py librosa); then
     "$p" "$S/analyze_song.py" "$song" "$@"
   else
+    for arg in "$@"; do case "$arg" in --rhythm|--rhythm=*|-o|--out|--out=*) die "导出分析或节奏文件需要 librosa，请设置 MV_PYTHON";; esac; done
     warn "没有 librosa，退到 beat_grid.py（只给 BPM 和拍位，没有情绪段）"
     pick_py numpy >/dev/null || die "numpy 也没有。直接问用户 BPM，写进 index.html 的 BPM:"
     "$(pick_py numpy)" "$S/beat_grid.py" "$song" "$@"
   fi
+  ;;
+
+# ───────────────────────────────────────────────────────────────────────
+storyboard)
+  need_proj "${1:-}"; proj="$1"; shift || true
+  node "$S/storyboard_draft.mjs" "$proj" "$@"
   ;;
 
 # ───────────────────────────────────────────────────────────────────────
@@ -177,7 +137,7 @@ stills|sheet|sweep)
   mkdir -p "$proj/out/stills"
   if [ "$cmd" = "sheet" ]; then
     [ -f "$proj/stills.html" ] || die "$proj 里没有 stills.html（从 templates/_shared/stills.html 拷一份）"
-    node "$S/render_frames.mjs" --page "$proj/stills.html" --times 0 --out "$proj/out" --name character-sheet --width "$W" --height "$H" \
+    node "$S/render_frames.mjs" --page "$proj/stills.html" --times 0 --out "$proj/out" --name character-sheet --width 1920 --height 1080 \
       || die "出图失败"
     say "设定图：$proj/out/character-sheet.png"
   elif [ "$cmd" = "sweep" ]; then

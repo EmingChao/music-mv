@@ -36,12 +36,33 @@ def db(x):
     return 20 * np.log10(np.maximum(x, 1e-6))
 
 
+def drum_candidates(spectrum, freqs, sr):
+    """按频带正向频谱变化找起音候选；保留切分位置，供制作时听校。"""
+    tracks = {}
+    for name, low, high, spacing in [
+        ("kick", 35, 155, 0.085), ("snare", 170, 3200, 0.075), ("hat", 5500, 10500, 0.047),
+    ]:
+        band = spectrum[(freqs >= low) & (freqs <= high)]
+        flux = np.maximum(np.diff(np.log1p(band), axis=1, prepend=0), 0).mean(axis=0)
+        peak = flux.max(initial=0)
+        if peak <= 1e-8:
+            tracks[name] = []
+            continue
+        # 使用局部均值排除持续音；一个频带可同时响应人声、军鼓或踩镲。
+        frames = librosa.util.peak_pick(flux / peak, pre_max=1, post_max=2, pre_avg=6,
+                                        post_avg=6, delta=0.075, wait=max(1, round(spacing * sr / HOP) - 1))
+        tracks[name] = [round(float(f * HOP / sr), 4) for f in frames]
+    return tracks
+
+
 def main():
+    """分析歌曲并按需导出装配页可加载的节奏轨。"""
     ap = argparse.ArgumentParser()
     ap.add_argument("song")
     ap.add_argument("-o", "--out", help="存成 JSON（每一拍、每一段、每个事件）")
     ap.add_argument("--tempo-hint", type=float, help="大概的 BPM（测出来差一倍时给它）")
     ap.add_argument("--sections", type=int, help="想分几段（默认按歌长自动，约 20 秒一段）")
+    ap.add_argument("--rhythm", help="导出工程 rhythm.js（实测拍位及分频起音候选）")
     a = ap.parse_args()
 
     y, sr = librosa.load(a.song, sr=SR, mono=True)
@@ -125,13 +146,21 @@ def main():
             "bpm": round(tempo, 1), "beat_interval": round(60 / tempo, 3) if tempo else None,
             "beats": [round(float(t), 3) for t in bt], "downbeats": [round(float(t), 3) for t in downbeats],
             "sections": sections, "events": events, "hits": hits, "last_hit": last_hit}
+    data["drums"] = drum_candidates(S, freqs, sr)
+    if a.rhythm:
+        tracks = {"beats": data["beats"], "downbeats": data["downbeats"], **data["drums"]}
+        with open(a.rhythm, "w", encoding="utf-8") as f:
+            f.write("window.MV_RHYTHM = " + json.dumps(tracks) + ";\n")
     if a.out:
         with open(a.out, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False, indent=1)
 
     print(f"# {data['file']} 的骨架\n")
     print(f"- 时长 {fmt_t(dur)}，响度 {I} LUFS（成片的音轨要和这个一样，差 1 dB 以上就是导出时变小了）")
-    print(f"- BPM 约 {tempo:.1f}（一拍 {60 / tempo:.3f} 秒，一小节 {240 / tempo:.2f} 秒）。自动测的可能差一倍，跟着拍手对一下")
+    if not tempo:
+        print("- 未测到稳定拍位，按听校结果填写 BPM 与重音。")
+    else:
+        print(f"- BPM 约 {tempo:.1f}（一拍 {60 / tempo:.3f} 秒，一小节 {240 / tempo:.2f} 秒）。自动测的可能差一倍，跟着拍手对一下")
     print(f"- 共 {len(bt)} 拍；第一拍 {fmt_t(bt[0]) if len(bt) else '-'}，小节第一拍从 {fmt_t(downbeats[0]) if len(downbeats) else '-'} 起每 4 拍一个（按 4/4 估的）")
     print("\n## 分段（按音色和和声自动分的，名字要听了再定：前奏、主歌、副歌……；「强」的几段多半是副歌）\n")
     print("| 段 | 起 | 止 | 多响（和最响处比） |\n|---|---|---|---|")

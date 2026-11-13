@@ -207,7 +207,9 @@ function makePiece(spec) {
   const B = A.map(function (p, i) { const dd = core * (0.55 + r() * 0.95); return [p[0] - N[i][0] * dd, p[1] - N[i][1] * dd]; });
   const M = margin > 0 ? A.map(function (p, i) { const dd = margin * (0.7 + r() * 0.7) * N[i][2]; return [p[0] + N[i][0] * dd, p[1] + N[i][1] * dd]; }) : null;
   // 画布范围（含白边 + 投影偏移 + 毛刺）
-  const sh = spec.shadow || { x: 8, y: 10, a: 0.22, b: 1.2 };
+  // shadow 缺字段就补默认值：只写 {a:0.2} 不写 x/y 会让缓存画布宽高变成 NaN（0 宽）
+  const fib = spec.fib !== false;
+  const sh = Object.assign({ x: 8, y: 10, a: 0.22, b: 1.2 }, spec.shadow || {});
   let bx0 = x0 - margin * 2 - 6, by0 = y0 - margin * 2 - 6, bx1 = x1 + margin * 2 + 6, by1 = y1 + margin * 2 + 6;
   if (sh.a > 0) { bx0 = Math.min(bx0, x0 - 6); by0 = Math.min(by0, y0 - 6); bx1 = Math.max(bx1, x1 + sh.x + (sh.b || 0) * 2 + 4); by1 = Math.max(by1, y1 + sh.y + (sh.b || 0) * 2 + 4); }
   const W = Math.ceil(bx1 - bx0), H = Math.ceil(by1 - by0);
@@ -223,9 +225,9 @@ function makePiece(spec) {
   g.save(); g.translate(1.1, 1.5); tracePath(g, B); g.lineWidth = 2.6; g.strokeStyle = 'rgba(44,30,18,0.20)'; g.stroke(); g.restore();
   g.save(); g.translate(-1.0, -1.2); tracePath(g, B); g.lineWidth = 2.0; g.strokeStyle = 'rgba(255,252,240,0.26)'; g.stroke(); g.restore();
   g.restore();
-  // ④ 撕口上的纤维毛刺（往外支棱出来的暖白小线）
+  // ④ 撕口上的纤维毛刺（往外支棱出来的暖白小线）；spec.fib:false 关掉（给小尺寸主体用，免得像划痕）
   g.lineCap = 'round';
-  for (let i = 0; i < A.length; i++) {
+  for (let i = 0; fib && i < A.length; i++) {
     const p = A[i]; if (r() > 0.34) continue;
     const L = 1.5 + r() * 4.5, an = Math.atan2(p[3], p[2]) + (r() - 0.5) * 1.5;
     g.strokeStyle = 'rgba(255,250,238,' + (0.5 + r() * 0.4).toFixed(2) + ')'; g.lineWidth = 0.5 + r() * 0.5;

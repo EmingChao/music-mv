@@ -1,11 +1,11 @@
 /* ═══════════════════════════════════════════════════════════════════════════
    pixel/engine.js —— 16bit 像素游戏风引擎（window.ENGINE）
    ---------------------------------------------------------------------------
-   坐标系：CFG.W × CFG.H = 320 × 180（一个格子 = 一个像素）。装配页把它整数倍
+   坐标系：CFG.W × CFG.H（默认 640 × 360）（一个格子 = 一个像素）。装配页把它整数倍
    最近邻放大到 CFG.OUT（1920×1080）；歌词和 endFrame 画在大画布清晰层上。
    铁律：
      1. 一切坐标 Math.round 到整数，没有半像素、没有 0.5 宽的线。
-     2. 只用 PAL 里 24 个颜色，没有 rgba 中间色、没有 alpha 渐变。
+     2. 基础色有 24 个语义名；工程可覆盖基础色并增加色阶。
      3. 渐变 = 4×4 Bayer 有序抖动（bt / dith），逐格决定两层色谁出现。
      4. 主体外面描 1px 深色轮廓（先把深色底形往外扩 1px，再画本体）。
      5. 动画 12fps：pf = floor(t*12)，雪/步伐/抖动只随 pf 变。
@@ -45,9 +45,52 @@
   ]; const NAMES = ['ink', 'night0', 'night1', 'night2', 'night3', 'skyline', 'snowFar', 'snowMid',
     'snow', 'snowLit', 'white', 'crabInk', 'crabDark', 'crabRed', 'crabLite', 'crabBelly',
     'woodDark', 'wood', 'woodLit', 'amber', 'lampWarm', 'lampCore', 'snowWarm', 'snowWarm2']; const PAL = {};
-  NAMES.forEach((n, i) => { PAL[n] = LIST[i]; }); E.palette = PAL;
-  const RGB = LIST.map((h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]); const IDX = new Map();
+  NAMES.forEach((n, i) => { PAL[n] = LIST[i]; }); // 项目色表在引擎加载前就绪，旧工程直接沿用雪夜基础色。
+  const extra = window.MV_DIRECTION?.palette || {};
+  for (const [name, color] of Object.entries(extra)) {
+    if (!/^#[0-9a-f]{6}$/i.test(color)) throw new Error('色表需要六位十六进制颜色：' + name);
+    PAL[name] = color;
+  }
+  E.palette = PAL;
+  const RGB = NAMES.map(name => PAL[name]).map((h) => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)]); const IDX = new Map();
   RGB.forEach((c, i) => IDX.set((c[0] << 16) | (c[1] << 8) | c[2], i));
+  // 单色值供旧精灵使用；色阶按暗面→受光面排列，镜头可选择本曲自己的灯光方案。
+  const dir = window.MV_DIRECTION || {};
+  const defaults = {
+    green: ['#17382D','#326C42','#63A851','#BEE588'],
+    space: ['#364146','#97A9A3','#DADCD0'], figure: ['#1D292B','#475957','#D88959'],
+    paper: ['#596C69','#AEBBB0','#FFF3CB'],
+  };
+  const looks = new Map();
+  let activeLook;
+  /** 为新材质构建受光表；灯下每上升一档就沿该材质自己的色阶前进。 */
+  function makeLook(override) {
+    const ramps = Object.assign(Object.create(null), defaults, dir.ramps, override);
+    const light = new Map();
+    for (const [material, colors] of Object.entries(ramps)) {
+      if (!Array.isArray(colors) || !colors.length || colors.some(c => typeof c !== 'string' || !/^#[0-9a-f]{6}$/i.test(c))) {
+        throw new Error('材质色阶需要非空的六位十六进制颜色数组：' + material);
+      }
+      const rgb = colors.map(color => parseInt(color.slice(1),16));
+      rgb.forEach((color,i) => light.set(color, [rgb[Math.min(i+1,rgb.length-1)], rgb[Math.min(i+2,rgb.length-1)]]));
+    }
+    return { ramps, light };
+  }
+  /** 任意顺序取帧时，从镜头自身恢复色阶。老工程自动使用基础色表。 */
+  E.useLook = function (name = '') {
+    if (!looks.has(name)) {
+      if (name && !Object.hasOwn(dir.looks || {}, name)) throw new Error('未知镜头配色：'+name);
+      looks.set(name, makeLook(name ? dir.looks[name] : undefined));
+    }
+    activeLook = looks.get(name);
+  };
+  /** 从指定材质色阶取色。level 为暗至亮的 0～1，返回离散像素色。 */
+  E.tone = function (material, level = 0.5) {
+    const colors = activeLook.ramps[material];
+    if (!colors) throw new Error('未知材质：'+material);
+    return colors[Math.round(Math.max(0, Math.min(1,level))*(colors.length-1))];
+  };
+  E.useLook();
   // 打光查表：按到灯的距离把一格颜色换成一档 / 两档更亮更暖的格子
   const LIT1 = [1, 2, 3, 4, 5, 6, 7, 22, 9, 21, 10, 12, 13, 14, 15, 21, 17, 18, 19, 20, 21, 21, 21, 22];
   const LIT2 = [2, 3, 4, 5, 6, 22, 22, 21, 21, 21, 10, 13, 14, 15, 21, 21, 18, 19, 20, 21, 21, 21, 21, 21];
@@ -83,7 +126,7 @@
   function vline(g, x, y0, y1, c) { if (y1 < y0) { const t = y0; y0 = y1; y1 = t; } rect(g, x, y0, 1, R(y1) - R(y0) + 1, c); }
   function line(g, x0, y0, x1, y1, c) {
     x0 = R(x0); y0 = R(y0); x1 = R(x1); y1 = R(y1); let dx = Math.abs(x1 - x0), dy = -Math.abs(y1 - y0);
-    const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1; let err = dx + dy; for (let n = 0; n < 400; n++) {
+    const sx = x0 < x1 ? 1 : -1, sy = y0 < y1 ? 1 : -1; let err = dx + dy; for (let n = 0, length = dx - dy + 1; n < length; n++) {
       px(g, x0, y0, c); if (x0 === x1 && y0 === y1) break; const e2 = 2 * err; if (e2 >= dy) { err += dy; x0 += sx; }
       if (e2 <= dx) { err += dx; y0 += sy; }
     }
@@ -339,7 +382,13 @@
   E.lightAt = function (wx, wy) { return lightIdx(wx, wy); }; function lightPass(g) {
     if (!S.lamp.on) return; const w = S.W, h = S.H; const img = g.getImageData(0, 0, w, h), d = img.data; for (let sy = 0; sy < h; sy++) {
       const wy = sy - S.off.y; for (let sx = 0; sx < w; sx++) {
-        const lv = lightIdx(sx - S.off.x, wy); if (!lv) continue; const i = (sy * w + sx) << 2; const id = IDX.get((d[i] << 16) | (d[i + 1] << 8) | d[i + 2]);
+        const lv = lightIdx(sx - S.off.x, wy); if (!lv) continue; const i = (sy * w + sx) << 2; const color = (d[i] << 16) | (d[i+1] << 8) | d[i+2];
+        const ramp = activeLook.light.get(color);
+        if (ramp) {
+          const next = ramp[lv-1]; d[i] = next >> 16; d[i+1] = (next >> 8) & 255; d[i+2] = next & 255;
+          continue;
+        }
+        const id = IDX.get(color);
         if (id === undefined) continue; const c = RGB[(lv === 2 ? LIT2 : LIT1)[id]]; d[i] = c[0]; d[i + 1] = c[1]; d[i + 2] = c[2];
       }
     }
@@ -354,7 +403,7 @@
       const e = (i * i) / (sw * sw); if (e > 1) continue; const c = lv > 0 ? PAL.night2 : PAL.night1; if (e > 0.45 && bt(o.x + i + off.x, o.y) < 0.5) continue;
       px(g, o.x + i, o.y + 1, c); if (e < 0.55) px(g, o.x + i, o.y + 2, PAL.night1);
     }
-    CH.draw(g, { x: R(o.x), y: R(o.y), size: R(s), facing: o.facing || 'front', expression: o.expression || 'neutral',
+    CH.draw(g, { ...o, x: R(o.x), y: R(o.y), size: R(s), facing: o.facing || 'front', expression: o.expression || 'neutral',
       action: o.action || 'stand', u: o.u || 0, t: o.t || 0, hold: o.hold, lit: lv }); g.restore();
   };
   // ─────────────────────────────────────────────── 背景：雪夜街角
@@ -426,12 +475,75 @@
     hline(g, x, x + w - 1, y - 13, PAL.wood); for (const yy of [y - 10, y - 7]) { hline(g, x, x + w - 1, yy, PAL.ink); hline(g, x, x + w - 1, yy - 1, PAL.wood); }
     hline(g, x, x + w - 1, y - 14, PAL.snowLit); for (let i = 0; i < w; i++) if (Math.sin(i * 0.8) > 0.3) px(g, x + i, y - 15, PAL.snow);
   }
+  /** 远楼、过站列车和站台分别移动；预留人物与片名所在的景深层。 */
+  function drawMetro(g, t, cam) {
+    const W = S.W, H = S.H;
+    const step = Math.floor(t * 12) / 12;
+    const pan = cam.x - W / 2;
+    g.save();
+    g.setTransform(1, 0, 0, 1, 0, 0);
+    SBW = W; SBH = H; lastC = null;
+    rect(g, 0, 0, W, H, PAL.night1);
+    const block = Math.max(8, R(W / 12));
+    // 天际线慢移，窗口按楼编号取固定种子，倒放时仍在原处。
+    const drift = step * W * 0.012 + pan * 0.2;
+    const first = Math.floor(drift / block);
+    for (let i = first; i <= first + Math.ceil(W / block) + 1; i++) {
+      const x = R(i * block - drift), top = R(H * (0.18 + noise('楼顶', i) * 0.22));
+      rect(g, x, top, block - 2, H * 0.58 - top, PAL.night2);
+      for (let j = 0; j < 4; j++) {
+        rect(g, x + block * 0.18, top + H * (0.02 + j * 0.04), block * 0.45, 2, PAL.skyline);
+      }
+    }
+    // 车顶、车身、车门按同一横移量绘制，保留车厢的轮廓。
+    rect(g, 0, H * 0.475, W, H * 0.24, PAL.carShade || PAL.night3);
+    rect(g, 0, H * 0.49, W, H * 0.18, PAL.carBody || PAL.woodDark);
+    const bay = Math.max(8, R(W / 7));
+    const slide = Math.floor(step * W * 0.25 + pan * 0.5);
+    for (let x = -(slide % bay) - bay; x < W; x += bay) {
+      const car = Math.round((x + slide) / bay);
+      const light = car % 3 ? PAL.windowCool || PAL.snowFar : PAL.windowLit || PAL.lampCore;
+      rect(g, x + 2, H * 0.51, bay * 0.81, H * 0.115, light);
+      // 车窗内的乘客和扶手固定在车厢上，站台人物与之反向运动。
+      const px = x + bay * (0.22 + noise('乘客', car) * 0.36);
+      blob(g, px, H * 0.566, H * 0.012, H * 0.015, PAL.night2);
+      rect(g, px - H * 0.015, H * 0.58, H * 0.033, H * 0.045, PAL.night2);
+      rect(g, x + bay * 0.42, H * 0.51, 2, H * 0.115, PAL.carShade || PAL.night2);
+      rect(g, x + bay * 0.89, H * 0.498, 1, H * 0.151, PAL.carShade || PAL.night2);
+    }
+    rect(g, 0, H * 0.66, W, Math.max(2, H * 0.013), PAL.amber);
+    rect(g, 0, H * 0.71, W, H * 0.30, PAL.night2);
+    rect(g, 0, H * 0.75, W, Math.max(1, H * 0.008), PAL.snowMid);
+    // 站台边缘的标记比远楼走得快，固定机位也可感知横向速度。
+    for (let x = -(Math.floor(step * W * 0.09 + pan) % bay) - bay; x < W; x += bay) {
+      rect(g, x, H * 0.94, bay * 0.62, Math.max(2, H * 0.015), PAL.night3);
+    }
+    // 站台顶棚的斜梁把视线引向人物，信号灯保留暖色焦点。
+    rect(g, 0, 0, W, H * 0.035, PAL.ink);
+    for (let x = 0; x < W; x += block * 3) {
+      for (let k = 0; k < H * 0.075; k++)
+        rect(g, x - k * 2, H * 0.033 + k, Math.max(2, W * 0.009), 1, PAL.night0);
+    }
+    rect(g, W * 0.88, H * 0.035, Math.max(2, W * 0.005), H * 0.07, PAL.ink);
+    rect(g, W * 0.85, H * 0.10, W * 0.07, H * 0.044, PAL.ink);
+    rect(g, W * 0.86, H * 0.115, W * 0.043, Math.max(2, H * 0.01), PAL.signal || PAL.amber);
+    g.restore();
+  }
   E.bg = function (g, shot, t, u, cam, CFG) {
     if (CFG) { S.CFG = CFG; S.W = CFG.W; S.H = CFG.H; }
-    const sp = (shot && shot.bg) || {}; const H = S.H, W = S.W; const lampO = sp.lamp || {}; const lampX = lampO.x == null ? R(W * 0.26) : R(lampO.x);
+    const sp = (shot && shot.bg) || {};
+    if (sp.kind === 'metro' || sp.kind === 'custom') {
+      S.lamp = { on: 0 }; S.off = { x: 0, y: 0 };
+      SBW = S.W; SBH = S.H; lastC = null;
+      if (sp.kind === 'metro') drawMetro(g, t, cam);
+      return;
+    }
+    const H = S.H, W = S.W; const lampO = sp.lamp || {}; const lampX = lampO.x == null ? R(W * 0.26) : R(lampO.x);
     const lampBase = lampO.base == null ? R(H * 0.845) : R(lampO.base); const rodH = Math.max(20, R(H * 0.51)); const lampTop = lampBase - rodH;
     S.lamp = { x: lampX, y: lampTop + R(H * 0.062), gy: lampBase, on: lampO.on == null ? 0 : lampO.on, str: lampO.strength || 1 };
-    cam = cam || { x: W / 2, y: H / 2, zoom: 1 }; g.save(); const off = snap(g); S.off = off; drawStreet(g, cam, t || 0, sp, S.cache);
+    cam = cam || { x: W / 2, y: H / 2, zoom: 1 }; if (!S.cache && CFG?.OUT) buildScene();
+    g.save(); const off = snap(g); S.off = off;
+    drawStreet(g, cam, t || 0, sp, S.cache);
     lightPass(g);                                        // 打光：换色 + 抖动
     // 灯：光晕在灯芯后面，灯头最后画（保持清晰）
     if (S.lamp.on) {
@@ -446,6 +558,7 @@
   }; E.sceneLamp = function () { return S.lamp; };
   // ─────────────────────────────────────────────── endFrame：扫描线 / 暗角 / 颗粒
   E.endFrame = function (g, t, CFG) {
+    if (dir.texture === 'clean') return;
     const W = g.canvas.width, H = g.canvas.height; g.save(); g.fillStyle = 'rgba(0,0,0,0.06)'; for (let y = 1; y < H; y += 3) g.fillRect(0, y, W, 1);      // 每 3 行一条扫描线
     g.restore(); if (S.vig) { g.drawImage(S.vig, 0, 0, W, H); }               // 四角暗角（≤0.12）
     if (S.grain) {
@@ -467,7 +580,7 @@
     const nw = R(fs * 2.0), nh = R(fs * 0.66), nx = bx + R(fs * 0.5), ny = by - R(nh * 0.55); g.fillStyle = PAL.ink; g.fillRect(nx, ny, nw, nh);
     g.fillStyle = PAL.snow; g.fillRect(nx + 3, ny + 3, nw - 6, nh - 6); g.fillStyle = PAL.night2; g.fillRect(nx + 5, ny + 5, nw - 10, nh - 10);
     g.font = '700 ' + R(fs * 0.46) + 'px "PingFang SC","Noto Sans CJK SC","Microsoft YaHei",sans-serif';
-    g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = PAL.lampWarm; g.fillText('阿蟹', nx + nw / 2, ny + nh / 2 + 1);
+    g.textAlign = 'center'; g.textBaseline = 'middle'; g.fillStyle = PAL.lampWarm; g.fillText(window.CHARACTER?.name || '演唱', nx + nw / 2, ny + nh / 2 + 1);
     // 歌词：打字机 + 硬描边（3px，lineJoin round，不用 shadowBlur）
     const p = Math.max(0, Math.min(1, (line.p - 0.04) / 0.55)); const n = Math.max(1, Math.ceil(text.length * p)); const shown = text.slice(0, n);
     g.font = font; g.textAlign = 'left'; const tx = R(cx - tw / 2), ty = R(cy + 1);
@@ -515,7 +628,8 @@
   }
   E.setup = function (CFG) {
     if (CFG) S.CFG = CFG; if (S.CFG) { S.W = S.CFG.W || 320; S.H = S.CFG.H || 180; }
-    S.vig = makeVig(); S.grain = makeGrain(); S.grainPat = null; S.cache = null; if (S.CFG && S.CFG.OUT) buildScene();
+    S.vig = dir.texture === 'clean' ? null : makeVig(); S.grain = dir.texture === 'clean' ? null : makeGrain();
+    S.grainPat = null; S.cache = null;
   };
   // ─────────────────────────────────────────────── 设定图（1920×1080 输出画布）
   E.sheet = function (g, CFG, API) {
@@ -545,7 +659,7 @@
     const r3y = r2y + r2h + R(H * 0.018), r3h = R(H * 0.215); const facings = [['front', '正面'], ['left', '左侧'], ['right', '右侧'], ['back', '背面']];
     const exps = (CH.EXPRESSIONS || ['neutral']).slice(0, 5); const acts = (CH.ACTIONS || ['stand']).slice(0, 5);
     const EXCN = { neutral: '平静', happy: '开心', sad: '难过', surprised: '惊讶', sleepy: '困倦' };
-    const ACCN = { stand: '站', walk: '走', wave: '挥钳', 'look-up': '抬头', shiver: '发抖' };
+    const ACCN = { stand: '站', walk: '走', wave: '挥手', 'look-up': '抬头', shiver: '发抖' };
     // 第一排：朝向（全身大图）
     const cw1 = R(span / 4); facings.forEach(([f, cn], i) => cell(x0 + R(cw1 * (i + 0.5)), top + (r1h >> 1), cw1 - 18, r1h,
       { size: 57, facing: f, expression: 'neutral', action: 'stand', u: 0.5, t: 0.35 }, cn + ' ' + f));

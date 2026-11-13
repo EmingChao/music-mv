@@ -41,7 +41,7 @@
 | `Protocol error (Emulation.setTouchEmulationEnabled): Session closed` | Chrome 在沙箱里没带 `--no-sandbox`（或机器 load 接近核数） | `render_frames.mjs` 已默认带 `--no-sandbox`；仍报就 `MV_WORKERS=1` 并等其它渲染结束 |
 | `SecurityError: tainted canvas` | 加载了外部图片/字体 | 删掉；本 skill 只用系统字体与代码画的一切 |
 | 页面越渲越慢 / 内存爆 | `setup()` 里生成的缓存每帧重算，或每帧 new canvas | 缓存到模块级变量，只在 `setup()` 生成一次 |
-| 中文不显示（像素风） | 在 320 空间画中文，字号 <8px | 歌词交给 `ENGINE.lyric`（画在 1920 层）；画面小字 ≥8px |
+| 中文不显示（像素风） | 在像素世界画中文，字号 <8px | 歌词交给 `ENGINE.lyric`（画在 1920 层）；画面小字 ≥8px |
 | 字体变成方框/默认黑体 | 字体栈写错或用了没装的字体 | 只用 `"PingFang SC","Noto Sans CJK SC"` 等系统栈；手写体用 `"Hannotate SC","Kaiti SC"` |
 
 ## 3. 画面（**不报错但难看**，最花时间）
@@ -51,7 +51,7 @@
 | 一帧一帧看都在抖/闪 | `Math.random()` 或种子跟 `t` 变 | 一切随机走 `ENGINE.noise(key, i)`；填色种子用 `id`，不用 `t` |
 | 抽帧看正常，成片在**闪** | 低透明度层叠顺序随 `t` 变 | 层顺序固定；透明度动画只允许 ≤0.25 且单层 |
 | 画面"空" | 中景没前景、没环境动效 | 加一层 `fx`（雪/尘/光）+ 一个近景遮挡物 |
-| 像 PPT | 一镜 >8s、几乎不动 | 拆镜；加机位缓推；加环境动效 |
+| 像 PPT | 一镜 >8s、几乎不动 | 标动作准备与接触帧，用走位、遮挡或反应镜揭示新的信息 |
 | 角色每镜都不太一样 | 镜头里自己画了人，没用 `ENGINE.char` | 删掉，全部走 `CHARACTER.draw` |
 | 角色脚浮空/穿地 | `y` 不是脚底 | `y` = 地面线 |
 | 角色太大/太小 | `size` 用了 `H*0.4` 之类手写值 | 用 `API.MH`（中景）/`API.H*0.12`（远景）/`H*0.45`（特写） |
