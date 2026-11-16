@@ -8,6 +8,7 @@
 #   ./mv.sh analyze <歌.mp3>          测 BPM / 拍位 / 情绪段落 → 工程目录下的 song-analysis.json
 #   ./mv.sh lyric <歌.lrc|字幕.srt>    歌词 → lyrics.js（+ 歌词网格 md）
 #   ./mv.sh storyboard <工程目录>       依据歌词和节奏轨写 STORYBOARD.md 草稿
+#   ./mv.sh compress <成片.mp4> -o <发布版.mp4> [--target-mb 50]
 #   ./mv.sh check <工程目录>           静态自检（镜头接线/首尾相接/黑名单/歌词时间轴）退出码 0/1
 #   ./mv.sh stills <工程目录> 0.4,1.6  出几张关键帧图 + 拼一张接触表（每镜审图用这个）
 #   ./mv.sh sheet <工程目录>           角色设定图（三视图/表情/动作），存 character-sheet.png
@@ -121,6 +122,11 @@ lyric)
   ;;
 
 # ───────────────────────────────────────────────────────────────────────
+compress)
+  "$(pick_py)" "$S/compress_video.py" "$@" || die "发布版压缩失败"
+  ;;
+
+# ───────────────────────────────────────────────────────────────────────
 check)
   need_proj "${1:-}"; proj="$1"; shift || true
   for f in "$proj"/engine.js "$proj"/character.js "$proj"/assemble.js "$proj"/shots/*.js "$proj"/lyrics.js; do
@@ -223,7 +229,13 @@ deliver)
   [ "$(ffprobe -v error -select_streams a:0 -show_entries stream=codec_type -of csv=p=0 "$proj/out/deliver.mp4")" = "audio" ] || { warn "没有音轨"; fail=1; }
   [ -s "$proj/out/deliver.mp4" ] || fail=1
   echo "成片：$proj/out/deliver.mp4"
-  [ $fail = 0 ] && echo "DELIVER PASS" || { echo "DELIVER FAIL"; exit 1; }
+  [ $fail = 0 ] || { echo "DELIVER FAIL"; exit 1; }
+  if [ -n "${MV_COMPRESS_PRESET:-}" ]; then
+    "$(pick_py)" "$S/compress_video.py" "$proj/out/deliver.mp4" -o "$proj/out/deliver-small.mp4" --preset "$MV_COMPRESS_PRESET" || die "发布版压缩失败"
+  else
+    "$(pick_py)" "$S/compress_video.py" "$proj/out/deliver.mp4" -o "$proj/out/deliver-small.mp4" --target-mb "${MV_TARGET_MB:-50}" || die "发布版压缩失败"
+  fi
+  echo "DELIVER PASS"
   ;;
 
 # ───────────────────────────────────────────────────────────────────────
