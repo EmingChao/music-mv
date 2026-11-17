@@ -55,7 +55,7 @@ mkdir -p work
 ```
 逐帧管线支持断点续渲。修改已缓存镜头后加 `render work/mv --from 12 --to 18 --force`（时间换成本次范围）。
 
-完成带声成片后生成发布版。Canvas 的 deliver 和 Remotion 的 rmaster 默认额外输出 small MP4，目标 50 MB；可用环境变量 MV_TARGET_MB 设置目标，或执行 `./mv.sh compress 成片.mp4 -o 发布版.mp4 --target-mb 50`。需要固定视频平均码率 1600 kbps 时，执行 `./mv.sh compress 成片.mp4 -o 发布版.mp4 --preset 1600k`，或设置 MV_COMPRESS_PRESET=1600k 后运行 deliver / rmaster。该模式使用双遍 slow 编码并直接复制音轨，实际文件大小随片长变化。对比发布版的字幕边缘、暗部、快速镜头和音画同步。两遍编码按片长和音轨码率分配大小，原成片也保留。
+完成带声成片后生成发布版。Canvas 的 deliver 和 Remotion 的 rmaster 默认额外输出 small MP4，目标 50 MB；可用环境变量 MV_TARGET_MB 设置目标，或执行 `./mv.sh compress 成片.mp4 -o 发布版.mp4 --target-mb 50`。需要固定视频平均码率 1600 kbps 时，执行 `./mv.sh compress 成片.mp4 -o 发布版.mp4 --preset 1600k`，或设置 MV_COMPRESS_PRESET=1600k 后运行 deliver / rmaster。该模式使用双遍 slow 编码并直接复制音轨，实际文件大小随片长变化。对比发布版的字幕边缘、暗部、快速镜头和音画同步。压缩前的成片保留在原路径，发布版单独保存，两者都交付。两遍编码按片长和音轨码率分配大小。
 
 全片交付前听看带声成片；接触表检查构图与景别分布。用 `scripts/video_rhythm.py 成片.mp4 --analysis work/song-analysis.json` 定位疑似停滞、黑帧和切点；加 `--loops --start 秒 --end 秒` 可筛查周期往复，对照镜表逐帧复核突变。有意停顿、字幕和颗粒都可能影响检测。至少抽查片头到首句、主歌一个切分、一次段落转换和尾拍。30 fps 下，硬切或指定接触帧与**听校后的目标**通常应差至多 1 帧；有意抢拍或拖拍则记录偏移。回看两侧相邻帧确认是哪一帧接触，普通 `sweep` 会隔帧抽样。若连续几镜只有字幕、颗粒或灯在动，回到分镜调整走位、动作轮廓或景别。在 `REVIEW.md` 记下实测落点与修正。[审片方法](references/review.md) · [排错](references/pitfalls.md)
 

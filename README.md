@@ -145,7 +145,7 @@ music-mv/
 
 ## 发布版压缩
 
-完成带声成片后，`deliver` 会生成 `out/deliver-small.mp4`。Remotion 的 `rmaster` 也会生成对应的 `-small.mp4`。默认目标为 50 MB（十进制），可通过 `MV_TARGET_MB=30` 修改。
+完成带声成片后，`deliver` 会生成 `out/deliver-small.mp4`。Remotion 的 `rmaster` 也会生成对应的 `-small.mp4`。压缩前的成片保留在原路径，发布版单独保存。默认目标为 50 MB（十进制），可通过 `MV_TARGET_MB=30` 修改。
 
 也可对已有成片执行 `./mv.sh compress 成片.mp4 -o 发布版.mp4 --target-mb 50`。发布版使用 H.264 双遍编码，保留分辨率和帧率，AAC 音轨直接复制。建议听看发布版并检查暗部、像素边缘与快速动作。
 
